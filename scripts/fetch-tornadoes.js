@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const SPC_TORNADO_CSV_URL = "https://www.spc.noaa.gov/wcm/data/1950-2024_torn.csv";
+const SPC_TORNADO_CSV_URL = "https://www.spc.noaa.gov/wcm/data/1950-2025_actual_tornadoes.csv";
 const OUT_PATH = path.join(process.cwd(), "data", "raw", "torn.csv");
 
 async function main() {

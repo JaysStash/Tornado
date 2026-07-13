@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const HURDAT2_URL = "https://www.nhc.noaa.gov/data/hurdat/hurdat2-1851-2024-040225.txt";
+const HURDAT2_URL = "https://www.nhc.noaa.gov/data/hurdat/hurdat2-1851-2025-02272026.txt";
 const OUT_PATH = path.join(process.cwd(), "data", "raw", "hurdat2.txt");
 
 async function main() {
