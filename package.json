@@ -1,0 +1,16 @@
+{
+  "name": "storm-archive-data-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Data pipeline: pulls SPC tornado data + NHC HURDAT2 hurricane data and builds static GeoJSON for the Storm Archive site.",
+  "type": "module",
+  "scripts": {
+    "fetch:tornadoes": "node scripts/fetch-tornadoes.js",
+    "fetch:hurricanes": "node scripts/fetch-hurdat2.js",
+    "build:data": "node scripts/build-static-data.js",
+    "update:all": "npm run fetch:tornadoes && npm run fetch:hurricanes && npm run build:data"
+  },
+  "dependencies": {
+    "csv-parse": "^5.5.6"
+  }
+}

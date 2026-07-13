@@ -1,0 +1,38 @@
+name: Update storm data
+
+on:
+  schedule:
+    # Runs daily at 09:00 UTC. Adjust as needed - SPC/NHC data doesn't
+    # change more than once a day for historical records.
+    - cron: "0 9 * * *"
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Fetch + build data
+        run: npm run update:all
+
+      - name: Commit changes if any
+        run: |
+          git config user.name "storm-archive-bot"
+          git config user.email "actions@github.com"
+          git add data/processed/
+          if git diff --staged --quiet; then
+            echo "No data changes."
+          else
+            git commit -m "Auto-update storm data $(date -u +%Y-%m-%d)"
+            git push
+          fi
