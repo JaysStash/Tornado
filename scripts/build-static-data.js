@@ -55,6 +55,28 @@ function main() {
     writeGeoJSON(path.join(OUT_DIR, "hurricanes", `${decade}s.geojson`), features);
   }
 
+  // Lightweight per-year counts for the timeline density histogram - so
+  // the timeline can render instantly without loading full decade data.
+  function yearCounts(features, getYear) {
+    const counts = {};
+    for (const f of features) {
+      const y = getYear(f);
+      if (!y) continue;
+      counts[y] = (counts[y] || 0) + 1;
+    }
+    return counts;
+  }
+  fs.writeFileSync(
+    path.join(OUT_DIR, "tornadoes", "year-counts.json"),
+    JSON.stringify(yearCounts(tornadoes, (f) => f.properties.year)),
+    "utf-8"
+  );
+  fs.writeFileSync(
+    path.join(OUT_DIR, "hurricanes", "year-counts.json"),
+    JSON.stringify(yearCounts(hurricanes, (f) => f.properties.year)),
+    "utf-8"
+  );
+
   // Lightweight index files listing available decades - the frontend
   // reads these first to know what to fetch.
   writeGeoJSON.raw = true;

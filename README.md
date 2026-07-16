@@ -74,15 +74,20 @@ year dataset at once.
 
 ## A heads up on the two source URLs
 
-Both SPC and NHC rename their bulk-download files once a year when the
-new season's data gets folded in:
-- `scripts/fetch-tornadoes.js` points at `1950-2024_torn.csv`
-- `scripts/fetch-hurdat2.js` points at `hurdat2-1851-2024-040225.txt`
+Both SPC and NHC rename their bulk-download files as data gets updated:
+- `scripts/fetch-tornadoes.js` points at `1950-2025_actual_tornadoes.csv`
+  (verified 2026-07-13 against SPC's naming convention — don't fall
+  back to the older `*_torn.csv` pattern seen in old tutorials, it's
+  retired)
+- `scripts/fetch-hurdat2.js` points at `hurdat2-1851-2025-02272026.txt`
+  (verified 2026-07-13 directly against https://www.nhc.noaa.gov/data/ —
+  NHC's trailing date stamp is the processing date, not guessable from
+  a pattern)
 
 If either fetch script starts failing with a 404, that's why — check
 https://www.spc.noaa.gov/wcm/#data or https://www.nhc.noaa.gov/data/#hurdat
 for the current filename and update the URL constant at the top of the
-script. This is a once-a-year, thirty-second fix, not a pipeline redesign.
+script.
 
 ## The auto-update cron
 
@@ -115,3 +120,95 @@ git push -u origin main
 
 Phase 2 is the Mapbox/MapLibre dark map + track rendering + stats panel,
 built against the `data/processed/` output this pipeline produces.
+
+---
+
+# Phase 2 + 3: Map, Filters, Stats, Timeline
+
+Adds the actual site: a full-screen dark map (MapLibre GL, no API key
+needed - uses CARTO's free vector basemaps), tornado/hurricane track
+rendering colored by EF rating / hurricane category, a filter + stats
+menu, and a history timeline with a year-density histogram.
+
+## Important: re-run the data pipeline after pulling this update
+
+The tornado parser picked up two new fields (`year`, `property_loss`,
+`crop_loss`) and the build script now also emits per-year count
+summaries for the timeline. If your `data/processed/` folder was built
+before this update, it's missing these - regenerate it:
+
+```bash
+npm install
+npm run update:all
+git add data/processed/
+git commit -m "Regenerate data with year/loss fields + year-counts"
+git push
+```
+
+Skipping this step won't crash the site, but the timeline histogram
+will be empty and event stats will show blanks for loss/year fields
+until you do.
+
+## Running it locally
+
+```bash
+npm install
+npm run dev
+```
+
+Opens on http://localhost:3000 (or whatever port Termux/your browser
+shows). The `predev`/`prebuild` scripts automatically copy
+`data/processed/` into `public/data/` before Next.js starts - you
+don't need to do that by hand.
+
+## Deploying to Vercel
+
+1. In the Vercel dashboard: **Add New Project** → import this repo
+2. Framework preset should auto-detect as Next.js - leave defaults as-is
+3. No environment variables needed yet (Supabase isn't wired in until Phase 4)
+4. Deploy
+
+Every push to `main`/`master` auto-deploys from here on, same as
+you're used to with your other StormSync properties.
+
+## What's implemented
+
+- **Map**: MapLibre GL JS, CARTO's free dark basemap re-tuned for
+  visible borders/cities/roads against a dark (not black) background
+- **Tornado tracks**: colored by EF rating, line width scaled to
+  reported damage-path width
+- **Hurricane tracks**: colored by Saffir-Simpson category, line width
+  scaled to peak wind intensity (HURDAT2 has no single "width" field
+  the way tornado records do, so intensity stands in as the analogous
+  scale)
+- **Filters**: event type, EF rating, hurricane category, state -
+  all combinable
+- **Stats panel** (in the hamburger menu): per-event detail on
+  whatever's clicked, plus aggregate stats for the current timeline
+  range or all-time (busiest/least busy years, busiest months, top
+  outbreak days, longest/shortest tracks, deadliest tornadoes, states
+  with the most EF4+ tornadoes)
+- **Timeline**: year-range scrubber with a density histogram showing
+  which years were busiest, plus play/pause animated reveal
+
+## Known gaps (by design, not oversights)
+
+- **No "deadliest hurricanes" stat.** HURDAT2 - the actual source this
+  pipeline pulls - only has position/wind/pressure, no fatality or
+  damage figures. Adding that would mean pulling in a second,
+  separate dataset. Flagged in the stats panel itself rather than
+  silently missing.
+- **"Top outbreak days" is a count-based heuristic**, not an official
+  outbreak classification. Real outbreak naming involves synoptic
+  judgment this data alone can't capture. Labeled as such in the UI.
+- **Flagship event photo/radar curation hasn't started.** As covered
+  when we first scoped this, there's no clean bulk photo feed to
+  auto-scrape, so this stays a manual curation task for specific
+  events - not built into Phase 2/3.
+- **Global timeline scrubber performance hasn't been tested on an
+  actual phone yet.** The implementation is built to be efficient
+  (filters data already loaded in the browser rather than refetching
+  on every scrub tick), but the build plan called for testing this on
+  a real device before committing to it over a per-event-only
+  fallback. Try it on your phone once this is deployed - if it lags,
+  say so and we'll scope it back.

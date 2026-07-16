@@ -2,10 +2,12 @@
 // Source: National Hurricane Center - public domain.
 // Docs: https://www.nhc.noaa.gov/data/#hurdat
 //
-// NOTE: NHC renames this file each year to include the latest season
-// (e.g. hurdat2-1851-2024-*.txt -> hurdat2-1851-2025-*.txt). If this
-// URL 404s, check https://www.nhc.noaa.gov/data/#hurdat for the
-// current filename and update HURDAT2_URL below.
+// NOTE: NHC renames this file each time they reprocess the database -
+// both the season-range AND the trailing date stamp change (the date
+// stamp is the processing date, not predictable from a pattern).
+// Confirmed current as of 2026-07-13: updated 2026-02-27 for the 2025
+// season. If this URL 404s, check https://www.nhc.noaa.gov/data/#hurdat
+// for the current filename and update HURDAT2_URL below.
 import fs from "node:fs";
 import path from "node:path";
 

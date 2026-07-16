@@ -1,16 +1,26 @@
 {
-  "name": "storm-archive-data-pipeline",
+  "name": "storm-archive",
   "version": "1.0.0",
   "private": true,
-  "description": "Data pipeline: pulls SPC tornado data + NHC HURDAT2 hurricane data and builds static GeoJSON for the Storm Archive site.",
+  "description": "Public historical archive of every US tornado and hurricane track, with an auto-updating data pipeline and a MapLibre-powered map.",
   "type": "module",
   "scripts": {
     "fetch:tornadoes": "node scripts/fetch-tornadoes.js",
     "fetch:hurricanes": "node scripts/fetch-hurdat2.js",
     "build:data": "node scripts/build-static-data.js",
-    "update:all": "npm run fetch:tornadoes && npm run fetch:hurricanes && npm run build:data"
+    "update:all": "npm run fetch:tornadoes && npm run fetch:hurricanes && npm run build:data",
+    "predev": "mkdir -p public/data && cp -r data/processed/. public/data/",
+    "prebuild": "mkdir -p public/data && cp -r data/processed/. public/data/",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "csv-parse": "^5.5.6"
+    "csv-parse": "^5.5.6",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "maplibre-gl": "^4.5.0"
   }
 }

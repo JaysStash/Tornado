@@ -1,6 +1,10 @@
 // Downloads the SPC severe weather database (tornadoes only) and caches it raw.
 // Source: SPC Storm Data - public domain.
 // Docs: https://www.spc.noaa.gov/wcm/#data
+//
+// Filename pattern confirmed 2026-07-13: 1950-{lastYear}_actual_tornadoes.csv
+// (older tutorials/scripts reference "*_torn.csv" - that convention was
+// retired; don't fall back to it if this URL ever 404s again.)
 import fs from "node:fs";
 import path from "node:path";
 

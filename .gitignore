@@ -1,5 +1,7 @@
 node_modules/
 data/raw/
+public/data/
+.next/
 .env
 .env.local
 .DS_Store

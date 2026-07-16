@@ -4,6 +4,14 @@
 // line between touchdown and lift-off, not the tornado's true curving
 // ground track. That's a data limitation, not a bug in this parser.
 //
+// KNOWN LIMITATION: property_loss/crop_loss are stored as SPC reports
+// them, but SPC's own unit convention changed over the dataset's
+// history (older records use coded/rounded categories, values from
+// 1996-2015 are in millions of dollars, 2016-onward are actual dollar
+// amounts) - don't treat these as a single consistent scale without
+// double-checking SPC's current documentation before trusting any
+// cross-era dollar comparison.
+//
 // SPC CSV columns (1950-present):
 // om,yr,mo,dy,date,time,tz,st,stf,stn,mag,inj,fat,loss,closs,
 // slat,slon,elat,elon,len,wid,ns,sn,sg,f1,f2,f3,f4,fc
@@ -41,6 +49,7 @@ export function parseTornadoes() {
         id: `torn-${row.yr}-${row.om}`,
         event_type: "tornado",
         date: row.date,
+        year: Number(row.yr),
         time: row.time,
         timezone: row.tz,
         state: row.st,
@@ -48,6 +57,8 @@ export function parseTornadoes() {
         preliminary: Number(row.yr) === new Date().getUTCFullYear(),
         injuries: Number(row.inj) || 0,
         fatalities: Number(row.fat) || 0,
+        property_loss: row.loss === "" ? null : Number(row.loss),
+        crop_loss: row.closs === "" ? null : Number(row.closs),
         length_miles: Number(row.len) || null,
         width_yards: Number(row.wid) || null,
         start_lat: slat,
