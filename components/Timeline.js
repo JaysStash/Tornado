@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 
 const MIN_YEAR = 1851;
 
+function clamp(year, max) {
+  if (Number.isNaN(year)) return MIN_YEAR;
+  return Math.min(Math.max(year, MIN_YEAR), max);
+}
+
 export default function Timeline({
   maxYear,
   yearRange,
@@ -128,9 +133,10 @@ export default function Timeline({
           value={yearRange[0]}
           min={MIN_YEAR}
           max={yearRange[1]}
-          onChange={(e) =>
-            onYearRangeChange([Number(e.target.value), yearRange[1]])
-          }
+          onChange={(e) => {
+            const start = clamp(Number(e.target.value), yearRange[1]);
+            onYearRangeChange([start, yearRange[1]]);
+          }}
           style={styles.yearInput}
         />
         <span style={{ color: "var(--text-tertiary)" }}>to</span>
@@ -140,9 +146,10 @@ export default function Timeline({
           value={yearRange[1]}
           min={yearRange[0]}
           max={maxYear}
-          onChange={(e) =>
-            onYearRangeChange([yearRange[0], Number(e.target.value)])
-          }
+          onChange={(e) => {
+            const end = clamp(Number(e.target.value), maxYear);
+            onYearRangeChange([yearRange[0], Math.max(end, yearRange[0])]);
+          }}
           style={styles.yearInput}
         />
       </div>

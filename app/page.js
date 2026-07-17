@@ -10,7 +10,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 export default function Page() {
   const [filters, setFilters] = useState({
-    startYear: 1950,
+    startYear: CURRENT_YEAR - 15,
     endYear: CURRENT_YEAR,
     showTornadoes: true,
     showHurricanes: true,

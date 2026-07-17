@@ -333,3 +333,77 @@ their `auth.users` row) - after that:
 - **Badge tiers** (`trusted` / `verified` / `featured` in the schema)
   aren't assigned anywhere automatically - set them manually per
   chaser in the Table Editor whenever you want to.
+
+---
+
+# Bug fixes in this update
+
+Three issues from testing, fixed alongside Phase 5:
+
+1. **Hurricane tracks were too visually heavy.** Two contributing causes,
+   both fixed: the line-width scale was too thick (now roughly half as
+   wide across the board), and the map was loading the *entire* 75+ year
+   history by default on first load, which is a lot of hurricane spaghetti
+   at once regardless of width. Default view is now the last 15 years -
+   expand the timeline range yourself for the full history.
+2. **Clicking a tornado/hurricane track now shows a small map popup**
+   with the quick facts, instead of opening the full side menu. The
+   popup has a "Full stats →" button for anyone who wants the deeper
+   stats-panel view.
+3. **Year range inputs could be typed down to year 0.** HTML's `min`/
+   `max` attributes on a number input only affect the up/down spinner
+   arrows - they don't stop someone from typing an out-of-range value
+   directly. Added real clamping logic so typed values can't escape
+   1851-present.
+
+---
+
+# Phase 5: Public Launch
+
+## Domain
+
+Two things you flagged as undecided: `tornado.sswx.space` vs
+`historic.sswx.space`. The setup steps are identical either way, so
+pick whichever when you're ready and substitute it below:
+
+1. Vercel dashboard -> your project -> **Settings -> Domains** -> add
+   your chosen subdomain
+2. Vercel shows you a CNAME record to add - copy it
+3. GoDaddy -> your domain -> **DNS** -> add that CNAME record
+   (Host: `tornado` or `historic`, pointing at what Vercel gave you)
+4. Wait for DNS to propagate (usually minutes, sometimes longer) -
+   Vercel's domain page shows a checkmark once it's live
+
+## Donation link
+
+`lib/config.js` has a `DONATION_URL` constant, empty by default - the
+"Support" link in the top bar only renders when it's set, so this is
+safe to leave blank until you have a Ko-fi or Buy Me a Coffee page.
+Once you do:
+
+```js
+export const DONATION_URL = "https://ko-fi.com/yourpage";
+```
+
+Ad support wasn't built this round - per the build plan, that's a
+later evaluation once there's real traffic to justify it.
+
+## Preliminary-event visibility
+
+Preliminary (unsurveyed tornadoes / in-progress hurricane seasons) now
+render with a dashed line directly on the map, not just in the click
+popup - so it's visible at a glance which tracks aren't finalized yet.
+
+## Chaser badges
+
+The `trusted` / `verified` / `featured` badge tiers (set manually per
+chaser in Supabase, per the Phase 4 section above) now show up in the
+chase-route map popup and in the moderation queue. Renaming the tiers
+is possible but means updating the `check` constraint on `chasers.badge`
+in the schema, not just a text change - ask if you want that changed.
+
+## Other launch polish
+
+- Custom favicon (a small tornado-funnel icon, matches the site's
+  accent color)
+- `robots.txt` allowing indexing

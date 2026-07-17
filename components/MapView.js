@@ -13,6 +13,8 @@ import {
   CATEGORY_MATCH_EXPRESSION,
   TORNADO_WIDTH_EXPRESSION,
   HURRICANE_WIDTH_EXPRESSION,
+  efLabel,
+  categoryLabel,
 } from "../lib/colors";
 import { supabase, supabaseConfigured } from "../lib/supabaseClient";
 
@@ -20,12 +22,42 @@ function emptyFC() {
   return { type: "FeatureCollection", features: [] };
 }
 
+// Compact popup content for a clicked tornado/hurricane track - the quick
+// facts, not the full stats-panel breakdown. There's a "Full stats" button
+// wired up below for anyone who wants the deeper view.
+function eventPopupHTML(feature) {
+  const p = feature.properties;
+  if (p.event_type === "tornado") {
+    return `
+      <div class="event-popup">
+        <strong>${efLabel(p.ef_rating)} tornado</strong>
+        <div class="event-popup-row">${p.date} · ${p.state}</div>
+        ${p.fatalities ? `<div class="event-popup-row">${p.fatalities} fatalities</div>` : ""}
+        ${p.preliminary ? `<div class="event-popup-badge">Preliminary</div>` : ""}
+        <button class="event-popup-stats-btn" data-open-stats="1">Full stats →</button>
+      </div>`;
+  }
+  return `
+    <div class="event-popup">
+      <strong>${p.name || "Unnamed"} (${p.year})</strong>
+      <div class="event-popup-row">${categoryLabel(p.category)} · ${p.max_wind_kt ?? "?"} kt</div>
+      ${p.preliminary ? `<div class="event-popup-badge">Preliminary</div>` : ""}
+      <button class="event-popup-stats-btn" data-open-stats="1">Full stats →</button>
+    </div>`;
+}
+
 // Builds a MapLibre filter expression combining: geometry type, active
-// EF/category selections, active state selection, and the timeline
-// scrub position (only show events at or before the scrubbed year).
-function buildFilter({ geomType, ratingProp, allowedRatings, allowedStates, scrubYear, yearProp }) {
+// EF/category selections, active state selection, the timeline scrub
+// position, and (for the split solid/dashed layer pairs) which side of
+// the preliminary flag this particular layer renders.
+function buildFilter({ geomType, ratingProp, allowedRatings, allowedStates, scrubYear, yearProp, preliminary }) {
   const clauses = ["all", ["==", ["geometry-type"], geomType]];
 
+  if (preliminary === true) {
+    clauses.push(["==", ["get", "preliminary"], true]);
+  } else if (preliminary === false) {
+    clauses.push(["!=", ["get", "preliminary"], true]);
+  }
   if (allowedRatings) {
     clauses.push([
       "in",
@@ -82,11 +114,30 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           id: "hurricane-tracks",
           type: "line",
           source: "hurricanes",
-          filter: ["==", ["geometry-type"], "LineString"],
+          filter: ["all", ["==", ["geometry-type"], "LineString"], ["!=", ["get", "preliminary"], true]],
           paint: {
             "line-color": CATEGORY_MATCH_EXPRESSION,
             "line-width": HURRICANE_WIDTH_EXPRESSION,
             "line-opacity": 0.85,
+          },
+          layout: { "line-cap": "round", "line-join": "round" },
+        });
+        // Preliminary (unsurveyed / season-in-progress) events get their
+        // own layer with a fixed dash pattern - line-dasharray can't be a
+        // per-feature data-driven expression in MapLibre, only a plain
+        // value or a zoom-based one, so "some tracks dashed, some not"
+        // has to be two layers filtered by the same property instead of
+        // one layer with a conditional.
+        map.addLayer({
+          id: "hurricane-tracks-preliminary",
+          type: "line",
+          source: "hurricanes",
+          filter: ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "preliminary"], true]],
+          paint: {
+            "line-color": CATEGORY_MATCH_EXPRESSION,
+            "line-width": HURRICANE_WIDTH_EXPRESSION,
+            "line-opacity": 0.85,
+            "line-dasharray": [2, 1.5],
           },
           layout: { "line-cap": "round", "line-join": "round" },
         });
@@ -95,11 +146,24 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           id: "tornado-tracks",
           type: "line",
           source: "tornadoes",
-          filter: ["==", ["geometry-type"], "LineString"],
+          filter: ["all", ["==", ["geometry-type"], "LineString"], ["!=", ["get", "preliminary"], true]],
           paint: {
             "line-color": EF_MATCH_EXPRESSION,
             "line-width": TORNADO_WIDTH_EXPRESSION,
             "line-opacity": 0.9,
+          },
+          layout: { "line-cap": "round", "line-join": "round" },
+        });
+        map.addLayer({
+          id: "tornado-tracks-preliminary",
+          type: "line",
+          source: "tornadoes",
+          filter: ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "preliminary"], true]],
+          paint: {
+            "line-color": EF_MATCH_EXPRESSION,
+            "line-width": TORNADO_WIDTH_EXPRESSION,
+            "line-opacity": 0.9,
+            "line-dasharray": [2, 1.5],
           },
           layout: { "line-cap": "round", "line-join": "round" },
         });
@@ -136,12 +200,27 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
 
         for (const layerId of [
           "tornado-tracks",
+          "tornado-tracks-preliminary",
           "tornado-points",
           "hurricane-tracks",
+          "hurricane-tracks-preliminary",
         ]) {
           map.on("click", layerId, (e) => {
             const feature = e.features?.[0];
-            if (feature) onFeatureClick(feature);
+            if (!feature) return;
+
+            const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
+              .setLngLat(e.lngLat)
+              .setHTML(eventPopupHTML(feature))
+              .addTo(map);
+
+            // The popup's "Full stats" button opens the side menu to the
+            // stats tab for this event - the popup itself only needs to
+            // exist after setHTML renders it into the DOM.
+            popup.getElement()?.querySelector("[data-open-stats]")?.addEventListener("click", () => {
+              onFeatureClick(feature);
+              popup.remove();
+            });
           });
           map.on("mouseenter", layerId, () => {
             map.getCanvas().style.cursor = "pointer";
@@ -160,13 +239,14 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
                 .map((url, i) => `<a href="${url}" target="_blank" rel="noopener">Photo ${i + 1}</a>`)
                 .join(" · ")
             : "";
-          new maplibregl.Popup({ closeButton: true })
+          new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
             .setLngLat(e.lngLat)
             .setHTML(
-              `<div style="font-family:sans-serif;font-size:13px;color:#111">
-                 <strong>${p.chaser_name || "Chaser"}</strong><br/>
-                 ${p.event_id}
-                 ${photoLinks ? `<br/>${photoLinks}` : ""}
+              `<div class="event-popup">
+                 <strong>${p.chaser_name || "Chaser"}</strong>
+                 ${p.chaser_badge ? `<span class="event-popup-badge">${p.chaser_badge}</span>` : ""}
+                 <div class="event-popup-row">${p.event_id}</div>
+                 ${photoLinks ? `<div class="event-popup-row">${photoLinks}</div>` : ""}
                </div>`
             )
             .addTo(map);
@@ -245,6 +325,19 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         allowedStates: states,
         scrubYear,
         yearProp: "year",
+        preliminary: false,
+      })
+    );
+    map.setFilter(
+      "tornado-tracks-preliminary",
+      buildFilter({
+        geomType: "LineString",
+        ratingProp: "ef_rating",
+        allowedRatings: tornadoRatings,
+        allowedStates: states,
+        scrubYear,
+        yearProp: "year",
+        preliminary: true,
       })
     );
     map.setFilter(
@@ -267,6 +360,19 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         allowedStates: null,
         scrubYear,
         yearProp: "year",
+        preliminary: false,
+      })
+    );
+    map.setFilter(
+      "hurricane-tracks-preliminary",
+      buildFilter({
+        geomType: "LineString",
+        ratingProp: "category",
+        allowedRatings: categoryRatings,
+        allowedStates: null,
+        scrubYear,
+        yearProp: "year",
+        preliminary: true,
       })
     );
   }, [ready, filters.efRatings, filters.categories, filters.states, scrubYear]);
@@ -281,7 +387,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
     async function loadChaseRoutes() {
       const { data } = await supabase
         .from("chase_routes")
-        .select("event_id, route_geojson, chasers(display_name), route_photos(hotlink_url)")
+        .select("event_id, route_geojson, chasers(display_name, badge), route_photos(hotlink_url)")
         .eq("status", "auto_approved");
       if (cancelled || !data) return;
 
@@ -291,6 +397,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         properties: {
           event_id: row.event_id,
           chaser_name: row.chasers?.display_name || "Unknown",
+          chaser_badge: row.chasers?.badge || "",
           photo_urls: JSON.stringify((row.route_photos || []).map((p) => p.hotlink_url)),
         },
       }));

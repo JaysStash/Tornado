@@ -30,7 +30,7 @@ export default function ModerationQueue({ session }) {
     setLoading(true);
     const { data } = await supabase
       .from("chase_routes")
-      .select("id, event_id, event_type, submitted_at, notes, chasers(display_name, trust_level)")
+      .select("id, event_id, event_type, submitted_at, notes, chasers(display_name, trust_level, badge)")
       .eq("status", "pending")
       .order("submitted_at", { ascending: true });
     setPending(data || []);
@@ -81,7 +81,8 @@ export default function ModerationQueue({ session }) {
             {route.chasers?.display_name || "Unknown chaser"}
             <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>
               {" "}
-              ({route.chasers?.trust_level})
+              ({route.chasers?.trust_level}
+              {route.chasers?.badge ? `, ${route.chasers.badge}` : ""})
             </span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
