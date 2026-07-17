@@ -17,6 +17,8 @@ export default function Page() {
     efRatings: null, // null = show all ratings
     categories: null,
     states: new Set(),
+    showChaserRoutes: true,
+    chaserNameFilter: "",
   });
   const [scrubYear, setScrubYear] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);

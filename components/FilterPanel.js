@@ -107,6 +107,26 @@ export default function FilterPanel({ filters, onChange }) {
       </section>
 
       <section>
+        <h3 style={styles.sectionTitle}>Chaser routes</h3>
+        <label style={{ ...styles.checkboxLabel, marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={filters.showChaserRoutes}
+            onChange={(e) => update({ showChaserRoutes: e.target.checked })}
+          />
+          Show submitted chase routes
+        </label>
+        {filters.showChaserRoutes && (
+          <input
+            placeholder="Filter by chaser name"
+            value={filters.chaserNameFilter}
+            onChange={(e) => update({ chaserNameFilter: e.target.value })}
+            style={styles.textInput}
+          />
+        )}
+      </section>
+
+      <section>
         <h3 style={styles.sectionTitle}>
           States {filters.states?.size ? `(${filters.states.size} selected)` : "(all)"}
         </h3>
@@ -157,6 +177,15 @@ const styles = {
     alignItems: "center",
     gap: 6,
     fontSize: 14,
+  },
+  textInput: {
+    background: "var(--bg-panel-raised)",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    color: "var(--text-primary)",
+    padding: "6px 9px",
+    fontSize: 13,
+    width: "100%",
   },
   chip: {
     background: "var(--bg-panel-raised)",

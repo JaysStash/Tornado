@@ -212,3 +212,124 @@ you're used to with your other StormSync properties.
   a real device before committing to it over a per-event-only
   fallback. Try it on your phone once this is deployed - if it lags,
   say so and we'll scope it back.
+
+---
+
+# Phase 4: Accounts + Chaser Submissions
+
+Adds Supabase-backed accounts, a chase-route submission form, and a
+moderation queue.
+
+## 1. Run the database schema
+
+Open your Supabase project dashboard -> **SQL Editor** -> **New query**,
+paste the entire contents of `supabase/schema.sql`, and run it. Safe to
+run once; re-running is harmless since every table uses
+`create table if not exists`.
+
+## 2. Get your API keys
+
+Supabase dashboard -> **Project Settings** -> **API**. You need three
+values:
+- **Project URL**
+- **anon / public key**
+- **service_role key** (click "Reveal" - keep this one secret, it
+  bypasses all the access rules in the database)
+
+## 3. Set environment variables
+
+Copy `.env.local.example` to `.env.local` and fill in the three
+Supabase values above, plus Resend (next step):
+
+```bash
+cp .env.local.example .env.local
+```
+
+Then edit `.env.local` with your actual values (`nano .env.local` or
+`sed` per your usual workflow).
+
+**Also add the same variables in Vercel:** Project Settings ->
+Environment Variables -> add all five (`NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`RESEND_API_KEY`, `ADMIN_EMAIL`) -> redeploy. `.env.local` only affects
+your local `npm run dev` - Vercel needs its own copy.
+
+## 4. Set up Resend (for moderation email alerts)
+
+1. Sign up free at resend.com (no credit card required)
+2. Dashboard -> API Keys -> create one -> paste into `RESEND_API_KEY`
+3. Set `ADMIN_EMAIL` to whatever address you want alerts sent to
+4. The default sender (`onboarding@resend.dev`) works with zero extra
+   setup. If you want it to send from an `@sswx.space` address instead,
+   Resend has a "Domains" section to verify that - optional, not
+   required for this to work.
+
+## 5. Make yourself an admin
+
+1. Deploy (or run locally) and sign in once with your own email via
+   the Chasers tab in the menu - this creates your `auth.users` row
+2. Supabase dashboard -> **Authentication** -> **Users** -> find your
+   email -> copy the **User UID**
+3. Supabase dashboard -> **Table Editor** -> `admins` table -> Insert
+   row -> paste your User UID as `user_id`
+
+You now see the "Moderation queue" tab with approve/reject controls.
+
+## 6. Onboarding trusted chasers (the three paths)
+
+All three still require the chaser to sign in once first (creates
+their `auth.users` row) - after that:
+
+- **Manual whitelist**: Table Editor -> `chasers` table -> find their
+  row (created automatically the first time they submit a route, or
+  insert one yourself with their `user_id`) -> set `trust_level` =
+  `manual`, `status` = `active`. Their future submissions auto-publish.
+- **Apply-and-approve**: they submit a route while signed in as normal
+  - it lands in your moderation queue as `pending` alongside their new
+  `chasers` row (also `pending_application`). Approving the route
+  doesn't change their trust status - to make future submissions
+  auto-publish too, set their `chasers.status` to `active` the same
+  way as manual whitelisting.
+- **Token-based API**: for a chaser who wants to script uploads
+  instead of using the form. Generate a token yourself:
+
+  ```bash
+  # Generate a random token
+  openssl rand -hex 32
+  # Hash it the same way the server checks it
+  echo -n "PASTE_THE_TOKEN_HERE" | sha256sum
+  ```
+
+  Give the chaser the plaintext token. In Supabase Table Editor,
+  insert a row into `chaser_api_tokens` with their `chaser_id` and the
+  **hash** (never the plaintext) as `token_hash`. They then POST to
+  `https://your-domain/api/chaser-upload` with
+  `Authorization: Bearer <token>` and a JSON body of `event_id`,
+  `event_type`, `route_geojson`, and optionally `photos`. Auto-approved
+  on arrival - this path is for people you already trust.
+
+## What's implemented
+
+- Passwordless email sign-in (magic link - no password to manage or
+  reset)
+- Submission form: search for the event you chased, upload a GPX or
+  KML route file (parsed client-side, no server upload needed), add
+  optional hotlinked photo URLs, submit
+- First submission auto-creates your chaser record; trust status
+  determines whether it auto-publishes or goes to moderation
+- Moderation queue (admin-only, enforced by database rules - not just
+  hidden UI) to approve/reject pending routes
+- Email alert on new pending submissions via Resend
+- Approved routes render on the map as a distinct dashed layer,
+  filterable by chaser name
+
+## Known gaps / placeholder content
+
+- **The rights/license consent text in the submission form is
+  placeholder wording**, not reviewed by a lawyer. Worth having an
+  actual final version before this goes fully public.
+- **No chaser public profile pages yet** - by design, that's
+  post-launch per the build plan.
+- **Badge tiers** (`trusted` / `verified` / `featured` in the schema)
+  aren't assigned anywhere automatically - set them manually per
+  chaser in the Table Editor whenever you want to.

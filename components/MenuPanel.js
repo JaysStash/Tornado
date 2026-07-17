@@ -3,6 +3,7 @@
 import { useState } from "react";
 import FilterPanel from "./FilterPanel";
 import StatsPanel from "./StatsPanel";
+import ChasersPanel from "./ChasersPanel";
 
 export default function MenuPanel({ open, onClose, filters, onFiltersChange, selectedEvent }) {
   const [tab, setTab] = useState("filters");
@@ -23,6 +24,12 @@ export default function MenuPanel({ open, onClose, filters, onFiltersChange, sel
           >
             Stats
           </button>
+          <button
+            style={{ ...styles.headerTab, ...(tab === "chasers" ? styles.headerTabActive : {}) }}
+            onClick={() => setTab("chasers")}
+          >
+            Chasers
+          </button>
         </div>
         <button style={styles.closeButton} onClick={onClose} aria-label="Close menu">
           ✕
@@ -30,11 +37,9 @@ export default function MenuPanel({ open, onClose, filters, onFiltersChange, sel
       </div>
 
       <div style={styles.body}>
-        {tab === "filters" ? (
-          <FilterPanel filters={filters} onChange={onFiltersChange} />
-        ) : (
-          <StatsPanel selectedEvent={selectedEvent} filters={filters} />
-        )}
+        {tab === "filters" && <FilterPanel filters={filters} onChange={onFiltersChange} />}
+        {tab === "stats" && <StatsPanel selectedEvent={selectedEvent} filters={filters} />}
+        {tab === "chasers" && <ChasersPanel />}
       </div>
     </div>
   );

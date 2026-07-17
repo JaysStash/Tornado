@@ -14,6 +14,7 @@ import {
   TORNADO_WIDTH_EXPRESSION,
   HURRICANE_WIDTH_EXPRESSION,
 } from "../lib/colors";
+import { supabase, supabaseConfigured } from "../lib/supabaseClient";
 
 function emptyFC() {
   return { type: "FeatureCollection", features: [] };
@@ -44,6 +45,7 @@ function buildFilter({ geomType, ratingProp, allowedRatings, allowedStates, scru
 export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingChange }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
+  const chaseRoutesRef = useRef([]);
   const [ready, setReady] = useState(false);
 
   // --- Map init (once) ---
@@ -115,6 +117,23 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           },
         });
 
+        // Chaser-submitted routes - a visually distinct style (bright,
+        // dashed) so they never get confused with the tornado/hurricane
+        // tracks themselves.
+        map.addSource("chase-routes", { type: "geojson", data: emptyFC() });
+        map.addLayer({
+          id: "chase-routes",
+          type: "line",
+          source: "chase-routes",
+          paint: {
+            "line-color": "#F5F5F5",
+            "line-width": 2,
+            "line-dasharray": [2, 1.5],
+            "line-opacity": 0.85,
+          },
+          layout: { "line-cap": "round", "line-join": "round" },
+        });
+
         for (const layerId of [
           "tornado-tracks",
           "tornado-points",
@@ -131,6 +150,33 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
             map.getCanvas().style.cursor = "";
           });
         }
+
+        map.on("click", "chase-routes", (e) => {
+          const feature = e.features?.[0];
+          if (!feature) return;
+          const p = feature.properties;
+          const photoLinks = p.photo_urls
+            ? JSON.parse(p.photo_urls)
+                .map((url, i) => `<a href="${url}" target="_blank" rel="noopener">Photo ${i + 1}</a>`)
+                .join(" · ")
+            : "";
+          new maplibregl.Popup({ closeButton: true })
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `<div style="font-family:sans-serif;font-size:13px;color:#111">
+                 <strong>${p.chaser_name || "Chaser"}</strong><br/>
+                 ${p.event_id}
+                 ${photoLinks ? `<br/>${photoLinks}` : ""}
+               </div>`
+            )
+            .addTo(map);
+        });
+        map.on("mouseenter", "chase-routes", () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", "chase-routes", () => {
+          map.getCanvas().style.cursor = "";
+        });
 
         mapRef.current = map;
         setReady(true);
@@ -224,6 +270,65 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
       })
     );
   }, [ready, filters.efRatings, filters.categories, filters.states, scrubYear]);
+
+  // --- Chase routes: fetch once Supabase is configured, re-filter
+  // client-side (no MapLibre expression does case-insensitive substring
+  // match, and the dataset here is small enough that this is cheap) ---
+  useEffect(() => {
+    if (!ready || !supabaseConfigured) return;
+    let cancelled = false;
+
+    async function loadChaseRoutes() {
+      const { data } = await supabase
+        .from("chase_routes")
+        .select("event_id, route_geojson, chasers(display_name), route_photos(hotlink_url)")
+        .eq("status", "auto_approved");
+      if (cancelled || !data) return;
+
+      const features = data.map((row) => ({
+        type: "Feature",
+        geometry: row.route_geojson.geometry,
+        properties: {
+          event_id: row.event_id,
+          chaser_name: row.chasers?.display_name || "Unknown",
+          photo_urls: JSON.stringify((row.route_photos || []).map((p) => p.hotlink_url)),
+        },
+      }));
+
+      chaseRoutesRef.current = features;
+      applyChaseRouteFilter();
+    }
+
+    loadChaseRoutes();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  function applyChaseRouteFilter() {
+    const map = mapRef.current;
+    if (!map) return;
+    const source = map.getSource("chase-routes");
+    if (!source) return;
+
+    if (!filters.showChaserRoutes) {
+      source.setData(emptyFC());
+      return;
+    }
+    const nameFilter = (filters.chaserNameFilter || "").trim().toLowerCase();
+    const filtered = nameFilter
+      ? chaseRoutesRef.current.filter((f) =>
+          f.properties.chaser_name.toLowerCase().includes(nameFilter)
+        )
+      : chaseRoutesRef.current;
+    source.setData({ type: "FeatureCollection", features: filtered });
+  }
+
+  useEffect(() => {
+    applyChaseRouteFilter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, filters.showChaserRoutes, filters.chaserNameFilter]);
 
   return <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />;
 }
