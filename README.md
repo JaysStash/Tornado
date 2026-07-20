@@ -407,3 +407,78 @@ in the schema, not just a text change - ask if you want that changed.
 - Custom favicon (a small tornado-funnel icon, matches the site's
   accent color)
 - `robots.txt` allowing indexing
+
+---
+
+# Data fix: current-year tornadoes weren't showing
+
+Not actually a bug in the code - the annual finalized SPC database
+(what Phase 1's `fetch-tornadoes.js` pulls) only contains fully
+surveyed prior years. The current year's tornadoes don't exist in that
+file until SPC finalizes and re-releases it, typically the following
+spring or summer. There was never a code path pulling in-progress-year
+data, so it was correctly showing nothing - just not what anyone
+looking at the map would expect.
+
+**Fix:** `scripts/fetch-current-year-tornadoes.js` now pulls SPC's
+separate daily preliminary Local Storm Report files
+(`{YYMMDD}_rpts_filtered_torn.csv`, one per calendar day) for the
+current year to date, and `build-static-data.js` merges them in -
+automatically, only for years the finalized database doesn't already
+cover. The moment SPC's real survey data for a year lands in the
+finalized file (next year, for 2026), this stops using the
+preliminary stand-in for that year on its own - no manual cleanup.
+
+**Worth knowing about this data:**
+- These are single-point reports (where a tornado was seen), not
+  surveyed start/end tracks - they render as points, not lines, same
+  as the rare touchdown-only records in the finalized dataset
+- The F-scale shown is an on-scene estimate, not a post-storm survey
+  rating - treat it as rougher than the finalized EF ratings
+- **This format is based on general knowledge of a long-standing SPC
+  data product, not a verified live fetch** - spc.noaa.gov blocks
+  automated access from where this was built, so the exact current
+  column layout couldn't be directly confirmed before shipping. Run
+  `npm run update:all` and sanity-check
+  `data/raw/current-year-torn.csv` looks right (real dates, plausible
+  lat/lon) before trusting it blindly. If SPC changed their format,
+  the parser will likely just silently produce zero rows rather than
+  crash - worth a look if 2026 still shows nothing after running this.
+
+---
+
+# Phase 6: Post-launch
+
+## Chaser public profile pages
+
+`/chasers/[id]` - bio, badge, and their published routes. Linked from
+the "View profile →" line in any chase-route map popup. Public, no
+sign-in needed to view (same as browsing the map itself).
+
+## Badge visual refinement
+
+The three badge tiers now render in distinct colors (trusted = amber,
+verified = cyan, featured = pink) instead of one flat style, wherever
+a badge shows up - map popups, moderation queue, profile pages.
+
+## Ad support - not built this round, and here's the honest read on why
+
+The build plan flagged this as "evaluate once there's real traffic to
+justify it," and that's still the right call: there's no traffic data
+yet since the domain isn't live. A few things worth knowing whenever
+that evaluation happens:
+- Display ad networks (the realistic free-tier option) generally need
+  a meaningful, sustained visitor baseline before approval or payout
+  is worth the effort - applying too early usually just means
+  rejection or pennies
+- A map-forward, dark-themed site is a genuinely awkward fit for
+  typical banner/display ad units visually - would need real design
+  thought about where an ad could go without wrecking the look, not
+  just dropping a script tag in
+- Donations are already wired up (Phase 5) and cost nothing to leave
+  running indefinitely - worth letting that sit for a while before
+  layering in ads at all
+
+Not a "come back in X months" - just flagging that this one benefits
+from actually having numbers to look at, which nothing else in this
+build needed.

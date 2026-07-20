@@ -15,6 +15,7 @@ import {
   HURRICANE_WIDTH_EXPRESSION,
   efLabel,
   categoryLabel,
+  badgeColor,
 } from "../lib/colors";
 import { supabase, supabaseConfigured } from "../lib/supabaseClient";
 
@@ -244,9 +245,10 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
             .setHTML(
               `<div class="event-popup">
                  <strong>${p.chaser_name || "Chaser"}</strong>
-                 ${p.chaser_badge ? `<span class="event-popup-badge">${p.chaser_badge}</span>` : ""}
+                 ${p.chaser_badge ? `<span class="event-popup-badge" style="color:${badgeColor(p.chaser_badge)};border-color:${badgeColor(p.chaser_badge)}">${p.chaser_badge}</span>` : ""}
                  <div class="event-popup-row">${p.event_id}</div>
                  ${photoLinks ? `<div class="event-popup-row">${photoLinks}</div>` : ""}
+                 ${p.chaser_id ? `<a class="event-popup-row" href="/chasers/${p.chaser_id}">View profile →</a>` : ""}
                </div>`
             )
             .addTo(map);
@@ -387,7 +389,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
     async function loadChaseRoutes() {
       const { data } = await supabase
         .from("chase_routes")
-        .select("event_id, route_geojson, chasers(display_name, badge), route_photos(hotlink_url)")
+        .select("event_id, route_geojson, chasers(id, display_name, badge), route_photos(hotlink_url)")
         .eq("status", "auto_approved");
       if (cancelled || !data) return;
 
@@ -396,6 +398,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         geometry: row.route_geojson.geometry,
         properties: {
           event_id: row.event_id,
+          chaser_id: row.chasers?.id || "",
           chaser_name: row.chasers?.display_name || "Unknown",
           chaser_badge: row.chasers?.badge || "",
           photo_urls: JSON.stringify((row.route_photos || []).map((p) => p.hotlink_url)),

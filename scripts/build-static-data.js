@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseTornadoes } from "./parse-tornadoes.js";
 import { parseHurdat2 } from "./parse-hurdat2.js";
+import { parseCurrentYearTornadoes } from "./parse-current-year-tornadoes.js";
 
 const OUT_DIR = path.join(process.cwd(), "data", "processed");
 
@@ -37,13 +38,29 @@ function writeGeoJSON(filePath, features) {
 function main() {
   console.log("Parsing tornado data...");
   const tornadoes = parseTornadoes();
-  console.log(`  ${tornadoes.length} tornado records`);
+  console.log(`  ${tornadoes.length} finalized tornado records`);
+
+  // The finalized annual database lags real time by a season or more -
+  // the current year's tornadoes won't appear there until SPC releases
+  // next year's update. Fill that gap with SPC's daily preliminary
+  // reports, but only for years the finalized data doesn't already
+  // cover - the moment SPC's real survey data for a year shows up in
+  // the finalized file, this automatically stops using the preliminary
+  // stand-in for that year, no manual cleanup needed.
+  const finalizedYears = new Set(tornadoes.map((f) => f.properties.year));
+  const preliminary = parseCurrentYearTornadoes().filter(
+    (f) => !finalizedYears.has(f.properties.year)
+  );
+  console.log(
+    `  ${preliminary.length} preliminary (unsurveyed) tornado reports for years not yet in the finalized database`
+  );
+  const allTornadoes = [...tornadoes, ...preliminary];
 
   console.log("Parsing hurricane data...");
   const hurricanes = parseHurdat2();
   console.log(`  ${hurricanes.length} hurricane tracks`);
 
-  const tornadoDecades = groupByDecade(tornadoes, (f) =>
+  const tornadoDecades = groupByDecade(allTornadoes, (f) =>
     parseInt(f.properties.date?.slice(0, 4), 10)
   );
   const hurricaneDecades = groupByDecade(hurricanes, (f) => f.properties.year);
@@ -68,7 +85,7 @@ function main() {
   }
   fs.writeFileSync(
     path.join(OUT_DIR, "tornadoes", "year-counts.json"),
-    JSON.stringify(yearCounts(tornadoes, (f) => f.properties.year)),
+    JSON.stringify(yearCounts(allTornadoes, (f) => f.properties.year)),
     "utf-8"
   );
   fs.writeFileSync(
@@ -79,10 +96,9 @@ function main() {
 
   // Lightweight index files listing available decades - the frontend
   // reads these first to know what to fetch.
-  writeGeoJSON.raw = true;
   fs.writeFileSync(
     path.join(OUT_DIR, "tornadoes", "index.json"),
-    JSON.stringify({ decades: Object.keys(tornadoDecades).sort(), count: tornadoes.length }),
+    JSON.stringify({ decades: Object.keys(tornadoDecades).sort(), count: allTornadoes.length }),
     "utf-8"
   );
   fs.writeFileSync(

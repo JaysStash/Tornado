@@ -6,9 +6,10 @@
   "type": "module",
   "scripts": {
     "fetch:tornadoes": "node scripts/fetch-tornadoes.js",
+    "fetch:current-year-tornadoes": "node scripts/fetch-current-year-tornadoes.js",
     "fetch:hurricanes": "node scripts/fetch-hurdat2.js",
     "build:data": "node scripts/build-static-data.js",
-    "update:all": "npm run fetch:tornadoes && npm run fetch:hurricanes && npm run build:data",
+    "update:all": "npm run fetch:tornadoes && npm run fetch:current-year-tornadoes && npm run fetch:hurricanes && npm run build:data",
     "predev": "mkdir -p public/data && cp -r data/processed/. public/data/",
     "prebuild": "mkdir -p public/data && cp -r data/processed/. public/data/",
     "dev": "next dev",
