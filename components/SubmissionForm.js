@@ -236,9 +236,14 @@ export default function SubmissionForm({ session }) {
       <label style={{ display: "flex", gap: 8, fontSize: 12.5, alignItems: "flex-start" }}>
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
         <span>
-          I own the rights to this route and any linked photos, and I'm granting Storm Archive a
-          non-exclusive license to display them. (Placeholder consent language — not
-          reviewed by a lawyer; worth having Jay finalize the exact wording.)
+          I confirm I own the rights to this route and any linked photos. I grant Storm Archive
+          a non-exclusive, revocable license to display them on the site and in related
+          promotion; I retain full ownership and can request removal at any time.
+          <br />
+          <span style={{ color: "var(--text-tertiary)" }}>
+            (Placeholder wording — functional, but worth a real legal review before this scales
+            up. Not legal advice.)
+          </span>
         </span>
       </label>
 

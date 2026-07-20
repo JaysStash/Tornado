@@ -482,3 +482,92 @@ that evaluation happens:
 Not a "come back in X months" - just flagging that this one benefits
 from actually having numbers to look at, which nothing else in this
 build needed.
+
+---
+
+# Open decisions - resolved
+
+**Domain: recommending `historic.sswx.space`.** `tornado.sswx.space`
+undersells it now that hurricanes, chaser routes, and everything else
+are part of the site - same naming mismatch that came up with the
+GitHub repo being called "Tornado" despite covering both. Switching
+a Vercel domain later is trivial if you'd rather go the other way -
+this isn't a load-bearing decision.
+
+**Badge tier names: keeping Trusted / Verified / Featured.** Already
+built, already sensible, no reason to relitigate without a specific
+alternative in mind. Say the word if you want different names -
+it's a one-line schema change plus updating `BADGE_COLORS` in
+`lib/colors.js`.
+
+**License wording: tightened**, still explicitly flagged as
+placeholder / not legal advice in the UI itself. Chasers now see they
+retain ownership, the license is revocable, and removal can be
+requested anytime - more concrete than the first draft without
+pretending to be real legal language.
+
+---
+
+# Three additions
+
+Picked for genuine fit with what already exists here, not just
+novelty:
+
+**1. Per-event animated playback.** Click any tornado or hurricane
+track, and the popup now has a "▶ Animate track" button - a marker
+travels the actual path with a growing trail behind it. This was
+implicit in the very first ask ("track playback that draws in") but
+never actually got built as a per-event thing, only as the global
+timeline reveal. Tornado tracks animate the straight touchdown-to-
+liftoff line; hurricane tracks animate through every real 6-hourly
+position, so multi-day storms actually read as a multi-day
+progression, not just a fast line-draw.
+
+**2. On This Day.** In the new Discover tab - checks the full archive
+for tornadoes and hurricanes that happened on today's calendar date,
+any year. Manually triggered (a button, not automatic) since it loads
+the complete dataset - didn't want that data cost happening silently
+the moment someone opens a menu tab.
+
+**3. Storms Near Me.** Also in Discover - uses the browser's location
+API to find everything within 60 miles of you, all-time, and flies
+the map there. Same manual-trigger reasoning as above, plus it needs
+explicit permission anyway.
+
+---
+
+# Flagship events
+
+Seeded with two entries, each with a real, checked link - not
+padded out with placeholders:
+- **2011 Super Outbreak**, linking to NWS Birmingham's event summary
+- **Hurricane Katrina**, linking to NHC's actual Tropical Cyclone
+  Report PDF
+
+This is genuinely a manual-curation feature (per the original
+scoping - no bulk photo/writeup feed exists to automate this from),
+so it grows exactly as fast as you add to `lib/flagshipEvents.js`
+by hand. Each entry needs either an `eventId` matching a real record
+in the static data, or a `yearRange` for outbreaks spanning many
+individual tornadoes.
+
+---
+
+# Theme: cool tones
+
+New palette - black/gray base with periwinkle as the primary accent
+and baby blue as a secondary one (timeline highlight, preliminary
+badges), replacing the old dark-navy/amber scheme. Typography is now
+Agbalumo for headers (bold, curvy display face - scoped to short text
+only, since it's genuinely hard to read at paragraph length) paired
+with Nunito Sans for body/UI text; IBM Plex Mono stays for numbers
+and coordinates since that's a legibility choice, not a brand one.
+
+**One deliberate exception:** the tornado EF-rating and hurricane
+category color ramps (green-through-purple, blue-through-pink)
+*didn't* change. Those aren't brand colors, they're a real
+meteorological convention - remapping them to fit a cool-tone palette
+would actively hurt usability for exactly the audience (chasers,
+meteorologists) this site is built for. Everything else - backgrounds,
+panels, borders, buttons, badges, the map's basemap tuning - follows
+the new palette throughout.

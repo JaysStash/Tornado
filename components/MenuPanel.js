@@ -4,8 +4,9 @@ import { useState } from "react";
 import FilterPanel from "./FilterPanel";
 import StatsPanel from "./StatsPanel";
 import ChasersPanel from "./ChasersPanel";
+import DiscoverPanel from "./DiscoverPanel";
 
-export default function MenuPanel({ open, onClose, filters, onFiltersChange, selectedEvent }) {
+export default function MenuPanel({ open, onClose, filters, onFiltersChange, selectedEvent, onFlyTo }) {
   const [tab, setTab] = useState("filters");
 
   return (
@@ -25,6 +26,12 @@ export default function MenuPanel({ open, onClose, filters, onFiltersChange, sel
             Stats
           </button>
           <button
+            style={{ ...styles.headerTab, ...(tab === "discover" ? styles.headerTabActive : {}) }}
+            onClick={() => setTab("discover")}
+          >
+            Discover
+          </button>
+          <button
             style={{ ...styles.headerTab, ...(tab === "chasers" ? styles.headerTabActive : {}) }}
             onClick={() => setTab("chasers")}
           >
@@ -39,6 +46,9 @@ export default function MenuPanel({ open, onClose, filters, onFiltersChange, sel
       <div style={styles.body}>
         {tab === "filters" && <FilterPanel filters={filters} onChange={onFiltersChange} />}
         {tab === "stats" && <StatsPanel selectedEvent={selectedEvent} filters={filters} />}
+        {tab === "discover" && (
+          <DiscoverPanel onFiltersChange={onFiltersChange} onClose={onClose} onFlyTo={onFlyTo} />
+        )}
         {tab === "chasers" && <ChasersPanel />}
       </div>
     </div>

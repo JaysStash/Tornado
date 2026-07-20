@@ -106,7 +106,7 @@ export default function Timeline({
                 height: `${Math.max(2, (count / maxCount) * 100)}%`,
                 background:
                   MIN_YEAR + i >= yearRange[0] && MIN_YEAR + i <= yearRange[1]
-                    ? "var(--accent-dim)"
+                    ? "var(--accent-secondary)"
                     : "var(--border-subtle)",
               }}
             />
@@ -218,7 +218,7 @@ const styles = {
     position: "absolute",
     top: 0,
     bottom: 0,
-    background: "rgba(232, 163, 61, 0.12)",
+    background: "rgba(139, 147, 232, 0.14)",
     borderLeft: "1px solid var(--accent-dim)",
     borderRight: "1px solid var(--accent-dim)",
     pointerEvents: "none",

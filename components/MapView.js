@@ -28,6 +28,9 @@ function emptyFC() {
 // wired up below for anyone who wants the deeper view.
 function eventPopupHTML(feature) {
   const p = feature.properties;
+  const animateBtn = feature.geometry.type === "LineString"
+    ? `<button class="event-popup-stats-btn" data-animate="1">▶ Animate track</button>`
+    : "";
   if (p.event_type === "tornado") {
     return `
       <div class="event-popup">
@@ -35,6 +38,7 @@ function eventPopupHTML(feature) {
         <div class="event-popup-row">${p.date} · ${p.state}</div>
         ${p.fatalities ? `<div class="event-popup-row">${p.fatalities} fatalities</div>` : ""}
         ${p.preliminary ? `<div class="event-popup-badge">Preliminary</div>` : ""}
+        ${animateBtn}
         <button class="event-popup-stats-btn" data-open-stats="1">Full stats →</button>
       </div>`;
   }
@@ -43,8 +47,24 @@ function eventPopupHTML(feature) {
       <strong>${p.name || "Unnamed"} (${p.year})</strong>
       <div class="event-popup-row">${categoryLabel(p.category)} · ${p.max_wind_kt ?? "?"} kt</div>
       ${p.preliminary ? `<div class="event-popup-badge">Preliminary</div>` : ""}
+      ${animateBtn}
       <button class="event-popup-stats-btn" data-open-stats="1">Full stats →</button>
     </div>`;
+}
+
+// Linear interpolation along a LineString's coordinates, t in [0,1].
+// Returns the interpolated point and the coordinates "revealed" so far,
+// used to draw a growing trail behind the animated marker.
+function interpolateAlongLine(coordinates, t) {
+  if (coordinates.length < 2) return { point: coordinates[0], revealed: coordinates };
+  const totalSegments = coordinates.length - 1;
+  const segmentFloat = Math.min(t, 1) * totalSegments;
+  const segmentIndex = Math.min(Math.floor(segmentFloat), totalSegments - 1);
+  const segmentT = segmentFloat - segmentIndex;
+  const [lon1, lat1] = coordinates[segmentIndex];
+  const [lon2, lat2] = coordinates[segmentIndex + 1];
+  const point = [lon1 + (lon2 - lon1) * segmentT, lat1 + (lat2 - lat1) * segmentT];
+  return { point, revealed: [...coordinates.slice(0, segmentIndex + 1), point] };
 }
 
 // Builds a MapLibre filter expression combining: geometry type, active
@@ -75,7 +95,7 @@ function buildFilter({ geomType, ratingProp, allowedRatings, allowedStates, scru
   return clauses;
 }
 
-export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingChange }) {
+export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingChange, flyToLocation }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const chaseRoutesRef = useRef([]);
@@ -191,12 +211,35 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           type: "line",
           source: "chase-routes",
           paint: {
-            "line-color": "#F5F5F5",
+            "line-color": "#EDEEFA",
             "line-width": 2,
             "line-dasharray": [2, 1.5],
             "line-opacity": 0.85,
           },
           layout: { "line-cap": "round", "line-join": "round" },
+        });
+
+        // Per-event animated playback - a growing trail + leading marker,
+        // normally empty until "Animate track" is clicked in a popup.
+        map.addSource("playback-trail", { type: "geojson", data: emptyFC() });
+        map.addLayer({
+          id: "playback-trail",
+          type: "line",
+          source: "playback-trail",
+          paint: { "line-color": "#8ED1F5", "line-width": 3, "line-opacity": 0.9 },
+          layout: { "line-cap": "round", "line-join": "round" },
+        });
+        map.addSource("playback-marker", { type: "geojson", data: emptyFC() });
+        map.addLayer({
+          id: "playback-marker",
+          type: "circle",
+          source: "playback-marker",
+          paint: {
+            "circle-color": "#8ED1F5",
+            "circle-radius": 6,
+            "circle-stroke-color": "#0A0B0F",
+            "circle-stroke-width": 2,
+          },
         });
 
         for (const layerId of [
@@ -220,6 +263,10 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
             // exist after setHTML renders it into the DOM.
             popup.getElement()?.querySelector("[data-open-stats]")?.addEventListener("click", () => {
               onFeatureClick(feature);
+              popup.remove();
+            });
+            popup.getElement()?.querySelector("[data-animate]")?.addEventListener("click", () => {
+              animatePlayback(feature);
               popup.remove();
             });
           });
@@ -439,6 +486,45 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
     applyChaseRouteFilter();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, filters.showChaserRoutes, filters.chaserNameFilter]);
+
+  function animatePlayback(feature) {
+    const map = mapRef.current;
+    if (!map) return;
+    const coords = feature.geometry.coordinates;
+    if (!coords || coords.length < 2) return;
+
+    const duration = 3000;
+    const start = performance.now();
+
+    function tick(now) {
+      const t = (now - start) / duration;
+      const { point, revealed } = interpolateAlongLine(coords, t);
+      map.getSource("playback-marker")?.setData({
+        type: "FeatureCollection",
+        features: [{ type: "Feature", geometry: { type: "Point", coordinates: point }, properties: {} }],
+      });
+      map.getSource("playback-trail")?.setData({
+        type: "FeatureCollection",
+        features: [{ type: "Feature", geometry: { type: "LineString", coordinates: revealed }, properties: {} }],
+      });
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        setTimeout(() => {
+          map.getSource("playback-marker")?.setData(emptyFC());
+          map.getSource("playback-trail")?.setData(emptyFC());
+        }, 800);
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Storms Near Me passes a [lon, lat] to center on once it has the
+  // user's location - null means no pending fly-to.
+  useEffect(() => {
+    if (!ready || !flyToLocation) return;
+    mapRef.current?.flyTo({ center: flyToLocation, zoom: 8, duration: 1500 });
+  }, [ready, flyToLocation]);
 
   return <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />;
 }

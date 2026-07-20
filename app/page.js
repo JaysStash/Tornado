@@ -24,6 +24,7 @@ export default function Page() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [flyToLocation, setFlyToLocation] = useState(null);
   const [tornadoYearCounts, setTornadoYearCounts] = useState({});
   const [hurricaneYearCounts, setHurricaneYearCounts] = useState({});
 
@@ -50,6 +51,7 @@ export default function Page() {
         scrubYear={scrubYear}
         onFeatureClick={handleFeatureClick}
         onLoadingChange={setLoading}
+        flyToLocation={flyToLocation}
       />
 
       <TopBar onMenuClick={() => setMenuOpen((o) => !o)} loading={loading} />
@@ -76,6 +78,7 @@ export default function Page() {
         filters={filters}
         onFiltersChange={setFilters}
         selectedEvent={selectedEvent}
+        onFlyTo={setFlyToLocation}
       />
     </main>
   );

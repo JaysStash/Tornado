@@ -1,22 +1,22 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Agbalumo&family=Nunito+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 :root {
-  /* Palette - grounded in NEXRAD/warning-product conventions, not a
-     generic dark-dashboard default. */
-  --bg-deep: #0d1420;      /* app chrome background - "night radar scope" */
-  --bg-panel: #111b29;     /* panel surfaces */
-  --bg-panel-raised: #16202e;
-  --border-subtle: #263141;
-  --border-strong: #3a4658;
-  --accent: #e8a33d;       /* warning-product amber - UI chrome only */
-  --accent-dim: #b4802f;
-  --text-primary: #e7e9ee;
-  --text-secondary: #8b96a8;
-  --text-tertiary: #5b6472;
+  /* Palette - cool tones: black, gray, baby blue, periwinkle. */
+  --bg-deep: #0a0b0f;
+  --bg-panel: #15161c;
+  --bg-panel-raised: #1d1f27;
+  --border-subtle: #2a2c35;
+  --border-strong: #3d404e;
+  --accent: #8b93e8;        /* periwinkle - primary accent */
+  --accent-dim: #6a71b8;
+  --accent-secondary: #8ed1f5; /* baby blue - secondary accent */
+  --text-primary: #e9eaf2;
+  --text-secondary: #9da0b5;
+  --text-tertiary: #63667a;
   --danger: #dc2626;
 
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Agbalumo", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Nunito Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --radius-sm: 6px;
@@ -130,8 +130,8 @@ button {
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  border: 1px solid var(--accent-dim);
-  color: var(--accent);
+  border: 1px solid var(--accent-secondary);
+  color: var(--accent-secondary);
   border-radius: 4px;
 }
 .event-popup-stats-btn {
