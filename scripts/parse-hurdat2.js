@@ -1,7 +1,9 @@
 // Parses NHC's HURDAT2 fixed-format text file into normalized GeoJSON
 // Features - one LineString per storm, with the full 6-hourly track
-// (position, wind, pressure, status) stored as properties.track for
-// timeline playback and stats.
+// (position, wind, pressure, status, wind radii) stored as
+// properties.track for timeline playback, stats, and per-segment
+// rendering (color/width that change along the track, not one flat
+// value for the whole storm).
 //
 // Format docs: https://www.nhc.noaa.gov/data/hurdat/hurdat2-format-atlantic.pdf
 import fs from "node:fs";
@@ -13,6 +15,17 @@ function parseLatLon(latStr, lonStr) {
   const lat = parseFloat(latStr) * (latStr.includes("S") ? -1 : 1);
   const lon = parseFloat(lonStr) * (lonStr.includes("W") ? -1 : 1);
   return [lon, lat];
+}
+
+// Average of the 4 quadrant radii (NE/SE/SW/NW) for one wind threshold,
+// ignoring missing (-999) quadrants. Returns null if all 4 are missing -
+// this data only exists reliably from 2004 onward per NHC's own
+// documentation; older records will mostly return null here, which
+// callers need to handle (fall back to a category-based estimate).
+function avgRadius(values) {
+  const valid = values.filter((v) => v > 0);
+  if (valid.length === 0) return null;
+  return valid.reduce((sum, v) => sum + v, 0) / valid.length;
 }
 
 export function parseHurdat2() {
@@ -35,15 +48,20 @@ export function parseHurdat2() {
 
     for (let r = 0; r < rowCount; r++) {
       const fields = lines[i + r].split(",").map((s) => s.trim());
-      const [date, time, , status, latStr, lonStr, windStr, pressureStr] = fields;
+      const [date, time, , status, latStr, lonStr, windStr, pressureStr, ...radiiFields] = fields;
       const [lon, lat] = parseLatLon(latStr, lonStr);
       const wind = parseInt(windStr, 10);
       const pressure = parseInt(pressureStr, 10);
+      const radii = radiiFields.map((v) => parseInt(v, 10));
 
       if (wind > maxWind) maxWind = wind;
       if (pressure > 0 && (minPressure === null || pressure < minPressure)) {
         minPressure = pressure;
       }
+
+      // radii layout (indices into the trailing fields): 0-3 = 34kt
+      // NE/SE/SW/NW, 4-7 = 50kt, 8-11 = 64kt.
+      const radius34ktNm = avgRadius(radii.slice(0, 4));
 
       track.push({
         date,
@@ -53,6 +71,7 @@ export function parseHurdat2() {
         lon,
         wind_kt: wind >= 0 ? wind : null,
         pressure_mb: pressure > 0 ? pressure : null,
+        radius_34kt_nm: radius34ktNm,
       });
     }
     i += rowCount;

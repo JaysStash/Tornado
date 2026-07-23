@@ -707,3 +707,94 @@ those, the query format likely needs a look.
 Hurricanes span many days, so "warning polygons for this event" would
 need picking a specific day within the storm, which felt like a
 separate small feature rather than an assumption to bake in silently.
+(Extended to hurricanes in the next round below.)
+
+---
+
+# Hurricane rendering overhaul: segmented color, true-to-scale width, warnings
+
+## Important: re-run the data pipeline after pulling this update
+
+The HURDAT2 parser now extracts wind-radii data (needed for true-scale
+hurricane width) that wasn't captured before. Regenerate:
+
+```bash
+npm install
+npm run update:all
+git add data/processed/
+git commit -m "Regenerate hurricane data with wind radii"
+git push
+```
+
+Skipping this won't break anything - hurricanes will just fall back to
+a generic category-based size estimate instead of their real measured
+extent until you regenerate.
+
+## Why hurricanes looked "cartoony"
+
+The color for an entire hurricane's track was based on its **peak**
+category only. A storm that spent most of its life as a tropical
+depression and was only briefly a Cat 5 rendered its *entire* track -
+including the weak early/late days - in the same hot-pink Cat 5 color.
+That flat, single-color-for-the-whole-lifetime look is what read as
+artificial/cartoonish, versus how real hurricane track products (NHC's
+own included) show intensity changing along the path.
+
+**Fixed:** each storm's track is now split into individual segments -
+one per recorded 6-hourly position - and each segment is colored by
+the storm's actual intensity *at that specific point*, not its peak.
+A storm's color now genuinely progresses (blue → teal → violet → pink
+→ back down again) as it strengthens and weakens, matching what
+actually happened.
+
+One real behavior change worth knowing: the Category filter in Filters
+now filters by intensity *at each point* rather than by a storm's
+peak. Filtering to "Category 3+" now shows the segments where a storm
+was actually at that intensity, not the entire track of any storm that
+ever reached it. This felt like the more honest reading of what that
+filter should mean now that segments exist, but flagging it since it's
+a genuine change from before.
+
+Clicking a track shows both figures now - "At this point" (this
+segment's intensity) and "Peak" (the storm's overall max) - so neither
+gets lost.
+
+## True-to-scale width (tornadoes and hurricanes)
+
+Previously, line width was just a rough visual scale in screen pixels
+- wider tornado/hurricane, thicker line, no real relationship to
+actual size. Now it's calculated to represent the real geographic
+width at whatever zoom level you're looking at, using the standard
+Web Mercator meters-per-pixel formula.
+
+**Tornadoes:** real reported damage-path width (SPC's `width_yards`).
+At continental/regional zoom this renders close to invisible for most
+tornadoes - which is *physically accurate* (a tornado path really is
+tiny next to state-scale distances) but not useful, so there's a
+1.5px floor to keep every tornado visible and clickable regardless of
+zoom. Zoom into a specific tornado and the true width becomes
+genuinely apparent.
+
+**Hurricanes:** real 34kt wind-radii extent (now parsed from HURDAT2 -
+this is what needed the pipeline re-run above), converted from a
+radius to a full diameter. This data only exists reliably for 2004+
+storms per NHC's own records; older storms or gaps fall back to a
+generic size estimate by category - clearly a stand-in, not that
+specific storm's real measured size. Hurricanes are large enough that
+true scale reads as genuinely meaningful even at normal zoom, unlike
+tornadoes.
+
+**One approximation worth knowing:** the pixel math uses one fixed
+reference latitude (~38°N, central US) rather than each feature's
+actual latitude, since Web Mercator distortion is latitude-dependent
+and a per-feature adjustment isn't practical in a map style
+expression. Renders very slightly wide north of that reference,
+slightly narrow south of it - a real but minor approximation, not
+a bug.
+
+## Warning polygons extended to hurricanes
+
+Each hurricane segment now knows its own date, so "Show warning
+polygons" works the same way it does for tornadoes - click any point
+along a hurricane's track and see the warnings active around that
+specific day, no separate date-picker needed.

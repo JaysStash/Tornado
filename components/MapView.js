@@ -11,11 +11,12 @@ import {
 import {
   EF_MATCH_EXPRESSION,
   CATEGORY_MATCH_EXPRESSION,
-  TORNADO_WIDTH_EXPRESSION,
-  HURRICANE_WIDTH_EXPRESSION,
+  TORNADO_TRUE_WIDTH_EXPRESSION,
+  HURRICANE_TRUE_WIDTH_EXPRESSION,
   efLabel,
   categoryLabel,
   badgeColor,
+  windToCategory,
 } from "../lib/colors";
 import { supabase, supabaseConfigured } from "../lib/supabaseClient";
 
@@ -46,12 +47,20 @@ function eventPopupHTML(feature) {
         <button class="event-popup-stats-btn" data-open-stats="1">Full stats →</button>
       </div>`;
   }
+  const atThisPoint = p.segment_wind_kt !== undefined
+    ? `<div class="event-popup-row">At this point: ${categoryLabel(p.category)} · ${p.segment_wind_kt} kt</div>`
+    : "";
+  const hurricaneWarningsBtn = p.segment_date
+    ? `<button class="event-popup-stats-btn" data-warnings="${p.segment_date}">Show warning polygons (${p.segment_date})</button>`
+    : "";
   return `
     <div class="event-popup">
       <strong>${p.name || "Unnamed"} (${p.year})</strong>
-      <div class="event-popup-row">${categoryLabel(p.category)} · ${p.max_wind_kt ?? "?"} kt</div>
+      <div class="event-popup-row">Peak: ${categoryLabel(p.peak_category ?? p.category)} · ${p.max_wind_kt ?? "?"} kt</div>
+      ${atThisPoint}
       ${p.preliminary ? `<div class="event-popup-badge">Preliminary</div>` : ""}
       ${animateBtn}
+      ${hurricaneWarningsBtn}
       <button class="event-popup-stats-btn" data-open-stats="1">Full stats →</button>
     </div>`;
 }
@@ -59,6 +68,64 @@ function eventPopupHTML(feature) {
 // Linear interpolation along a LineString's coordinates, t in [0,1].
 // Returns the interpolated point and the coordinates "revealed" so far,
 // used to draw a growing trail behind the animated marker.
+// Splits one hurricane's full track into 2-point segment features, one
+// per consecutive pair of 6-hourly positions. Each segment carries its
+// OWN category/width (computed from that specific point), not the
+// storm's peak - this is what fixes the "whole track shows Cat 5 pink
+// even during the tropical-depression days" problem. `track` itself is
+// deliberately excluded from each segment's properties (it'd otherwise
+// get duplicated into every single segment - O(n) data times O(n)
+// segments is real bloat for a 100+ point storm). The full original
+// feature stays available via hurricaneByIdRef for anything that needs
+// the whole track (animate playback, full stats).
+function segmentHurricaneTrack(feature) {
+  const track = feature.properties.track || [];
+  const { track: _track, ...restProps } = feature.properties;
+  const segments = [];
+
+  for (let i = 0; i < track.length - 1; i++) {
+    const a = track[i];
+    const b = track[i + 1];
+    if (a.lon == null || a.lat == null || b.lon == null || b.lat == null) continue;
+    const segWind = b.wind_kt ?? a.wind_kt ?? 0;
+    const rawDate = b.date || a.date; // "YYYYMMDD" from HURDAT2
+    const segmentDate = rawDate
+      ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
+      : null;
+    segments.push({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: [[a.lon, a.lat], [b.lon, b.lat]] },
+      properties: {
+        ...restProps,
+        category: windToCategory(segWind),
+        peak_category: restProps.category,
+        segment_wind_kt: segWind,
+        segment_date: segmentDate,
+        radius_34kt_nm: b.radius_34kt_nm ?? a.radius_34kt_nm ?? null,
+      },
+    });
+  }
+
+  // Rare case: a storm with only one recorded position can't form a
+  // segment - render it as a point rather than dropping it silently.
+  if (segments.length === 0 && track.length === 1 && track[0].lon != null) {
+    const p = track[0];
+    segments.push({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+      properties: {
+        ...restProps,
+        category: windToCategory(p.wind_kt ?? 0),
+        peak_category: restProps.category,
+        segment_wind_kt: p.wind_kt ?? 0,
+        radius_34kt_nm: p.radius_34kt_nm ?? null,
+      },
+    });
+  }
+
+  return segments;
+}
+
 function interpolateAlongLine(coordinates, t) {
   if (coordinates.length < 2) return { point: coordinates[0], revealed: coordinates };
   const totalSegments = coordinates.length - 1;
@@ -105,6 +172,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
   const chaseRoutesRef = useRef([]);
   const lastTornadoesRef = useRef([]);
   const lastHurricanesRef = useRef([]);
+  const hurricaneByIdRef = useRef(new Map());
   const damagePointsEnabledRef = useRef(false);
   const [ready, setReady] = useState(false);
 
@@ -145,7 +213,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           filter: ["all", ["==", ["geometry-type"], "LineString"], ["!=", ["get", "preliminary"], true]],
           paint: {
             "line-color": CATEGORY_MATCH_EXPRESSION,
-            "line-width": HURRICANE_WIDTH_EXPRESSION,
+            "line-width": HURRICANE_TRUE_WIDTH_EXPRESSION,
             "line-opacity": 0.85,
           },
           layout: { "line-cap": "round", "line-join": "round" },
@@ -163,7 +231,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           filter: ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "preliminary"], true]],
           paint: {
             "line-color": CATEGORY_MATCH_EXPRESSION,
-            "line-width": HURRICANE_WIDTH_EXPRESSION,
+            "line-width": HURRICANE_TRUE_WIDTH_EXPRESSION,
             "line-opacity": 0.85,
             "line-dasharray": [2, 1.5],
           },
@@ -177,7 +245,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           filter: ["all", ["==", ["geometry-type"], "LineString"], ["!=", ["get", "preliminary"], true]],
           paint: {
             "line-color": EF_MATCH_EXPRESSION,
-            "line-width": TORNADO_WIDTH_EXPRESSION,
+            "line-width": TORNADO_TRUE_WIDTH_EXPRESSION,
             "line-opacity": 0.9,
           },
           layout: { "line-cap": "round", "line-join": "round" },
@@ -189,7 +257,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           filter: ["all", ["==", ["geometry-type"], "LineString"], ["==", ["get", "preliminary"], true]],
           paint: {
             "line-color": EF_MATCH_EXPRESSION,
-            "line-width": TORNADO_WIDTH_EXPRESSION,
+            "line-width": TORNADO_TRUE_WIDTH_EXPRESSION,
             "line-opacity": 0.9,
             "line-dasharray": [2, 1.5],
           },
@@ -333,6 +401,15 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
             const feature = e.features?.[0];
             if (!feature) return;
 
+            // Hurricane layers now render per-segment pieces (see
+            // segmentHurricaneTrack) - the segment only knows about its
+            // own 6-hour span, so animate/full-stats need to look up the
+            // complete storm by id instead.
+            const isHurricaneSegment = feature.properties.event_type === "hurricane";
+            const fullFeature = isHurricaneSegment
+              ? hurricaneByIdRef.current.get(feature.properties.id) || feature
+              : feature;
+
             const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
               .setLngLat(e.lngLat)
               .setHTML(eventPopupHTML(feature))
@@ -342,11 +419,11 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
             // stats tab for this event - the popup itself only needs to
             // exist after setHTML renders it into the DOM.
             popup.getElement()?.querySelector("[data-open-stats]")?.addEventListener("click", () => {
-              onFeatureClick(feature);
+              onFeatureClick(fullFeature);
               popup.remove();
             });
             popup.getElement()?.querySelector("[data-animate]")?.addEventListener("click", () => {
-              animatePlayback(feature);
+              animatePlayback(fullFeature);
               popup.remove();
             });
             const warningsBtn = popup.getElement()?.querySelector("[data-warnings]");
@@ -422,13 +499,16 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
       ]);
       if (cancelled) return;
 
+      const hurricaneSegments = hurricanes.flatMap(segmentHurricaneTrack);
+      hurricaneByIdRef.current = new Map(hurricanes.map((f) => [f.properties.id, f]));
+
       map.getSource("tornadoes")?.setData({
         type: "FeatureCollection",
         features: tornadoes,
       });
       map.getSource("hurricanes")?.setData({
         type: "FeatureCollection",
-        features: hurricanes,
+        features: hurricaneSegments,
       });
       onLoadingChange?.(false);
       lastTornadoesRef.current = tornadoes;
