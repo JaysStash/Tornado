@@ -4,9 +4,51 @@ import { useEffect, useRef, useState } from "react";
 
 const MIN_YEAR = 1851;
 
-function clamp(year, max) {
-  if (Number.isNaN(year)) return MIN_YEAR;
-  return Math.min(Math.max(year, MIN_YEAR), max);
+function clamp(year, min, max) {
+  if (Number.isNaN(year)) return min;
+  return Math.min(Math.max(year, min), max);
+}
+
+// Number inputs bound directly to a clamped value re-render on every
+// keystroke with whatever the clamp produced - which stomps on
+// mid-typing states like "2" or "20" before the user finishes typing
+// "2020". This keeps its own draft text while focused, and only
+// commits a clamped value on blur or Enter, so intermediate values
+// during typing are left alone.
+function YearInput({ value, min, max, onCommit }) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const n = clamp(Number(draft), min, max);
+    setDraft(String(n));
+    onCommit(n);
+  }
+
+  return (
+    <input
+      type="number"
+      className="mono"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        commit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          commit();
+          e.currentTarget.blur();
+        }
+      }}
+      style={styles.yearInput}
+    />
+  );
 }
 
 export default function Timeline({
@@ -126,31 +168,39 @@ export default function Timeline({
         )}
       </div>
 
+      <div style={styles.presetRow}>
+        {[
+          ["This year", 0],
+          ["Last 5 yrs", 5],
+          ["Last 10 yrs", 10],
+          ["Last 30 yrs", 30],
+        ].map(([label, yearsBack]) => (
+          <button
+            key={label}
+            style={styles.presetButton}
+            onClick={() => onYearRangeChange([maxYear - yearsBack, maxYear])}
+          >
+            {label}
+          </button>
+        ))}
+        <button style={styles.presetButton} onClick={() => onYearRangeChange([MIN_YEAR, maxYear])}>
+          All time
+        </button>
+      </div>
+
       <div style={styles.rangeInputs}>
-        <input
-          type="number"
-          className="mono"
+        <YearInput
           value={yearRange[0]}
           min={MIN_YEAR}
           max={yearRange[1]}
-          onChange={(e) => {
-            const start = clamp(Number(e.target.value), yearRange[1]);
-            onYearRangeChange([start, yearRange[1]]);
-          }}
-          style={styles.yearInput}
+          onCommit={(start) => onYearRangeChange([start, yearRange[1]])}
         />
         <span style={{ color: "var(--text-tertiary)" }}>to</span>
-        <input
-          type="number"
-          className="mono"
+        <YearInput
           value={yearRange[1]}
           min={yearRange[0]}
           max={maxYear}
-          onChange={(e) => {
-            const end = clamp(Number(e.target.value), maxYear);
-            onYearRangeChange([yearRange[0], Math.max(end, yearRange[0])]);
-          }}
-          style={styles.yearInput}
+          onCommit={(end) => onYearRangeChange([yearRange[0], end])}
         />
       </div>
     </div>
@@ -236,6 +286,21 @@ const styles = {
     alignItems: "center",
     gap: 8,
     marginTop: 8,
+  },
+  presetRow: {
+    display: "flex",
+    gap: 5,
+    marginTop: 8,
+    flexWrap: "wrap",
+  },
+  presetButton: {
+    background: "var(--bg-panel-raised)",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    color: "var(--text-secondary)",
+    padding: "4px 8px",
+    fontSize: 11,
+    cursor: "pointer",
   },
   yearInput: {
     width: 70,

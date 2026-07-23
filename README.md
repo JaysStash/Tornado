@@ -571,3 +571,104 @@ would actively hurt usability for exactly the audience (chasers,
 meteorologists) this site is built for. Everything else - backgrounds,
 panels, borders, buttons, badges, the map's basemap tuning - follows
 the new palette throughout.
+
+---
+
+# Bug fixes + additions (this round)
+
+## 1. Email confirmation went to localhost and did nothing
+
+Two parts to this - one's fixed in code, one needs a one-time dashboard
+change on your end:
+
+- **Code (done):** the sign-in call was missing `emailRedirectTo`,
+  so Supabase fell back to whatever "Site URL" is configured in your
+  project - which defaults to `localhost:3000` when a project is first
+  created. Now it dynamically uses wherever the app is actually running.
+- **Dashboard (you need to do this once):** Supabase dashboard -> your
+  Tornado project -> **Authentication -> URL Configuration** -> set
+  **Site URL** to your real Vercel URL (or custom domain once that's
+  live) -> add that same URL to **Redirect URLs**. Without this, the
+  code fix alone won't fully solve it - Supabase still needs to know
+  your real URL is allowed.
+
+## 2. No real admin panel / no way to approve people or set badges / no profile button
+
+Three related gaps, all addressed:
+- **Admin tab**: Chasers menu now shows an "Admin" tab, but *only*
+  once you're confirmed as an admin (same `admins` table check as
+  before - if you haven't added yourself yet, see Phase 4's setup
+  section above, step 5). Previously the moderation queue existed but
+  was easy to miss since it looked identical whether you were admin
+  or not.
+- **Chaser management (new)**: inside Admin -> "Manage chasers" -
+  every chaser, with dropdowns to set status, trust level, and badge
+  directly. No more needing the raw Supabase table editor for routine
+  changes.
+- **Profile button (new)**: top bar now has a small circular button -
+  shows your initial when signed in, a generic icon when not. Tapping
+  it jumps straight into the account area instead of requiring you to
+  dig through the menu to find it.
+
+## 3. Year scrubber was unusable when typing
+
+This was a real bug I introduced with the year-0 fix a few rounds
+back: the input was re-validating and overwriting its own value on
+*every keystroke*, so typing "2020" would get stomped after the first
+digit landed. Fixed by giving the input its own local draft state that
+only commits (and validates) on blur or Enter - typing now works
+normally, and out-of-range values still get caught, just at the right
+moment instead of mid-keystroke.
+
+## 4. No visible area for chaser routes
+
+This was mostly a consequence of #2 - if nothing's been approved yet
+(because admin setup wasn't finished), the layer is correctly empty,
+which looks identical to "broken." Added a live count next to the
+"Chaser routes" toggle in Filters so it's always clear how many
+approved routes exist, rather than a toggle that might silently do
+nothing.
+
+## 5. Donation button - step by step
+
+No new code needed, this was already built - just needs your account:
+1. Sign up at ko-fi.com (or buymeacoffee.com, whichever you prefer) -
+   free, no card required
+2. Get your page URL (e.g. `https://ko-fi.com/yourpage`)
+3. In the repo: `lib/config.js` -> change `DONATION_URL = ""` to your
+   actual URL
+4. `git add lib/config.js && git commit -m "Add donation link" && git push`
+
+The Support button in the top bar only appears once this is set - it's
+been safely hidden this whole time, not broken.
+
+## 6. Additions inspired by maxvelocitywx.com/history
+
+Went through that page feature by feature. Added:
+- **Live summary stat strip** (Tornadoes / Hurricanes / Injuries /
+  Fatalities / Highest EF) for whatever's currently visible - updates
+  live as you filter or scrub the timeline
+- **Quick date-range presets** on the timeline (This year / Last 5 /
+  10 / 30 years / All time) - adapted to year granularity rather than
+  their day-based ones (30/90 days), since this timeline covers the
+  full 1851-present archive, not just recent activity. Their preset
+  style didn't map cleanly onto that, so this is the equivalent
+  version for what this site actually is.
+- **Always-available EF/category legend** - collapsed to a small chip
+  by default (mobile screen space), expands on tap
+- **Live NWS damage points** - a data source flagged as real and
+  usable all the way back at the start of this whole project but never
+  actually wired in until now. New toggle in Filters. Verified real
+  endpoint (`services.dat.noaa.gov`), fetched live for whatever's in
+  the current map view rather than baked into the static pipeline,
+  since it's operational/recent survey data, not a deep historical
+  archive - don't expect it to populate for old events, that's the
+  nature of the source, not a bug.
+
+**Not added:** their "Warning Polygon Maps" section (daily snapshot
+images of warning polygons from Iowa Environmental Mesonet's archive).
+I didn't have a verified, confirmed-working image-serving endpoint for
+that the way I did for damage points, and didn't want to ship a guess
+for something that renders as an actual image. Worth a dedicated look
+if you want it - flag it and we'll research it properly rather than
+rushing it.

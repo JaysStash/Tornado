@@ -95,10 +95,13 @@ function buildFilter({ geomType, ratingProp, allowedRatings, allowedStates, scru
   return clauses;
 }
 
-export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingChange, flyToLocation }) {
+export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingChange, flyToLocation, onChaseRouteCountChange, onSummaryStatsChange }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const chaseRoutesRef = useRef([]);
+  const lastTornadoesRef = useRef([]);
+  const lastHurricanesRef = useRef([]);
+  const damagePointsEnabledRef = useRef(false);
   const [ready, setReady] = useState(false);
 
   // --- Map init (once) ---
@@ -242,6 +245,42 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           },
         });
 
+        // Live NWS damage points (NOAA DAT), fetched on demand for the
+        // current viewport rather than baked into the static pipeline -
+        // this is operational/recent survey data, not a full historical
+        // archive back to 1950, so it's fetched fresh, not pre-processed.
+        map.addSource("damage-points", { type: "geojson", data: emptyFC() });
+        map.addLayer({
+          id: "damage-points",
+          type: "circle",
+          source: "damage-points",
+          paint: {
+            "circle-color": "#F5A623",
+            "circle-radius": 4,
+            "circle-stroke-color": "#0A0B0F",
+            "circle-stroke-width": 1,
+            "circle-opacity": 0.85,
+          },
+        });
+        map.on("click", "damage-points", (e) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          const p = f.properties;
+          new maplibregl.Popup({ closeButton: true, maxWidth: "240px" })
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `<div class="event-popup">
+                 <strong>Damage point</strong>
+                 <div class="event-popup-row">${p.efscale || "Rating not yet assigned"}</div>
+                 ${p.stormdate ? `<div class="event-popup-row">${p.stormdate}</div>` : ""}
+               </div>`
+            )
+            .addTo(map);
+        });
+        map.on("moveend", () => {
+          if (damagePointsEnabledRef.current) loadDamagePoints();
+        });
+
         for (const layerId of [
           "tornado-tracks",
           "tornado-tracks-preliminary",
@@ -346,6 +385,9 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         features: hurricanes,
       });
       onLoadingChange?.(false);
+      lastTornadoesRef.current = tornadoes;
+      lastHurricanesRef.current = hurricanes;
+      reportSummaryStats();
     }
 
     load();
@@ -424,6 +466,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         preliminary: true,
       })
     );
+    reportSummaryStats();
   }, [ready, filters.efRatings, filters.categories, filters.states, scrubYear]);
 
   // --- Chase routes: fetch once Supabase is configured, re-filter
@@ -453,6 +496,7 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
       }));
 
       chaseRoutesRef.current = features;
+      onChaseRouteCountChange?.(features.length);
       applyChaseRouteFilter();
     }
 
@@ -525,6 +569,82 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
     if (!ready || !flyToLocation) return;
     mapRef.current?.flyTo({ center: flyToLocation, zoom: 8, duration: 1500 });
   }, [ready, flyToLocation]);
+
+  function reportSummaryStats() {
+    const tornadoRatings = filters.efRatings;
+    const states = filters.states;
+    const visibleTornadoes = lastTornadoesRef.current.filter((f) => {
+      const p = f.properties;
+      if (tornadoRatings && !tornadoRatings.has(p.ef_rating ?? -1)) return false;
+      if (states && states.size > 0 && !states.has(p.state)) return false;
+      if (scrubYear !== null && p.year > scrubYear) return false;
+      return true;
+    });
+    const categoryRatings = filters.categories;
+    const visibleHurricanes = lastHurricanesRef.current.filter((f) => {
+      const p = f.properties;
+      if (categoryRatings && !categoryRatings.has(p.category ?? -1)) return false;
+      if (scrubYear !== null && p.year > scrubYear) return false;
+      return true;
+    });
+
+    const highestEF = visibleTornadoes.reduce(
+      (max, f) => Math.max(max, f.properties.ef_rating ?? -1),
+      -1
+    );
+    onSummaryStatsChange?.({
+      tornadoCount: visibleTornadoes.length,
+      hurricaneCount: visibleHurricanes.length,
+      injuries: visibleTornadoes.reduce((sum, f) => sum + (f.properties.injuries || 0), 0),
+      fatalities: visibleTornadoes.reduce((sum, f) => sum + (f.properties.fatalities || 0), 0),
+      highestEF: highestEF >= 0 ? highestEF : null,
+    });
+  }
+
+  // Live NWS damage points from NOAA's Damage Assessment Toolkit -
+  // fetched fresh for whatever's currently in view, not baked into the
+  // static pipeline. This is operational/recent survey data (not a full
+  // historical archive), so results will skew toward recent events -
+  // that's the nature of the source, not a bug here.
+  async function loadDamagePoints() {
+    const map = mapRef.current;
+    if (!map) return;
+    const bounds = map.getBounds();
+    const bbox = [
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth(),
+    ].join(",");
+    const url =
+      "https://services.dat.noaa.gov/arcgis/rest/services/nws_damageassessmenttoolkit/DamageViewer/FeatureServer/0/query" +
+      `?where=1=1&outFields=efscale,stormdate,event_id&geometry=${bbox}` +
+      "&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects" +
+      "&outSR=4326&resultRecordCount=500&f=geojson";
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const geojson = await res.json();
+      map.getSource("damage-points")?.setData(geojson);
+    } catch {
+      // Live external service outside our control - fail quietly rather
+      // than breaking the rest of the map over it.
+    }
+  }
+
+  // Keeps the moveend listener (registered once at map init) in sync
+  // with the current toggle state, and loads/clears immediately when
+  // the toggle itself changes.
+  useEffect(() => {
+    damagePointsEnabledRef.current = filters.showDamagePoints;
+    if (!ready) return;
+    if (filters.showDamagePoints) {
+      loadDamagePoints();
+    } else {
+      mapRef.current?.getSource("damage-points")?.setData(emptyFC());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, filters.showDamagePoints]);
 
   return <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />;
 }

@@ -1,39 +1,46 @@
 "use client";
 
-import { useState } from "react";
 import FilterPanel from "./FilterPanel";
 import StatsPanel from "./StatsPanel";
 import ChasersPanel from "./ChasersPanel";
 import DiscoverPanel from "./DiscoverPanel";
 
-export default function MenuPanel({ open, onClose, filters, onFiltersChange, selectedEvent, onFlyTo }) {
-  const [tab, setTab] = useState("filters");
-
+export default function MenuPanel({
+  open,
+  onClose,
+  filters,
+  onFiltersChange,
+  selectedEvent,
+  onFlyTo,
+  tab,
+  onTabChange,
+  chaseRouteCount,
+}) {
   return (
     <div className={`menu-panel${open ? " open" : ""}`}>
       <div style={styles.header}>
         <div style={styles.tabRow}>
           <button
             style={{ ...styles.headerTab, ...(tab === "filters" ? styles.headerTabActive : {}) }}
-            onClick={() => setTab("filters")}
+            onClick={() => onTabChange("filters")}
           >
             Filters
           </button>
           <button
             style={{ ...styles.headerTab, ...(tab === "stats" ? styles.headerTabActive : {}) }}
-            onClick={() => setTab("stats")}
+            onClick={() => onTabChange("stats")}
           >
             Stats
           </button>
           <button
             style={{ ...styles.headerTab, ...(tab === "discover" ? styles.headerTabActive : {}) }}
-            onClick={() => setTab("discover")}
+            onClick={() => onTabChange("discover")}
           >
             Discover
           </button>
           <button
             style={{ ...styles.headerTab, ...(tab === "chasers" ? styles.headerTabActive : {}) }}
-            onClick={() => setTab("chasers")}
+            onClick={() => onTabChange("chasers")}
           >
             Chasers
           </button>
@@ -44,7 +51,9 @@ export default function MenuPanel({ open, onClose, filters, onFiltersChange, sel
       </div>
 
       <div style={styles.body}>
-        {tab === "filters" && <FilterPanel filters={filters} onChange={onFiltersChange} />}
+        {tab === "filters" && (
+          <FilterPanel filters={filters} onChange={onFiltersChange} chaseRouteCount={chaseRouteCount} />
+        )}
         {tab === "stats" && <StatsPanel selectedEvent={selectedEvent} filters={filters} />}
         {tab === "discover" && (
           <DiscoverPanel onFiltersChange={onFiltersChange} onClose={onClose} onFlyTo={onFlyTo} />

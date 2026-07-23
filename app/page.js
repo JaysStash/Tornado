@@ -5,6 +5,8 @@ import MapView from "../components/MapView";
 import TopBar from "../components/TopBar";
 import Timeline from "../components/Timeline";
 import MenuPanel from "../components/MenuPanel";
+import SummaryStats from "../components/SummaryStats";
+import Legend from "../components/Legend";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -19,12 +21,16 @@ export default function Page() {
     states: new Set(),
     showChaserRoutes: true,
     chaserNameFilter: "",
+    showDamagePoints: false,
   });
   const [scrubYear, setScrubYear] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuTab, setMenuTab] = useState("filters");
   const [loading, setLoading] = useState(false);
   const [flyToLocation, setFlyToLocation] = useState(null);
+  const [chaseRouteCount, setChaseRouteCount] = useState(null);
+  const [summaryStats, setSummaryStats] = useState(null);
   const [tornadoYearCounts, setTornadoYearCounts] = useState({});
   const [hurricaneYearCounts, setHurricaneYearCounts] = useState({});
 
@@ -41,6 +47,7 @@ export default function Page() {
 
   function handleFeatureClick(feature) {
     setSelectedEvent(feature);
+    setMenuTab("stats");
     setMenuOpen(true);
   }
 
@@ -52,9 +59,21 @@ export default function Page() {
         onFeatureClick={handleFeatureClick}
         onLoadingChange={setLoading}
         flyToLocation={flyToLocation}
+        onChaseRouteCountChange={setChaseRouteCount}
+        onSummaryStatsChange={setSummaryStats}
       />
 
-      <TopBar onMenuClick={() => setMenuOpen((o) => !o)} loading={loading} />
+      <SummaryStats stats={summaryStats} />
+      <Legend />
+
+      <TopBar
+        onMenuClick={() => setMenuOpen((o) => !o)}
+        onProfileClick={() => {
+          setMenuTab("chasers");
+          setMenuOpen(true);
+        }}
+        loading={loading}
+      />
 
       <Timeline
         maxYear={CURRENT_YEAR}
@@ -79,6 +98,9 @@ export default function Page() {
         onFiltersChange={setFilters}
         selectedEvent={selectedEvent}
         onFlyTo={setFlyToLocation}
+        tab={menuTab}
+        onTabChange={setMenuTab}
+        chaseRouteCount={chaseRouteCount}
       />
     </main>
   );

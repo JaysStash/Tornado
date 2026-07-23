@@ -19,13 +19,29 @@ function toggleInSet(set, value) {
   return next;
 }
 
-export default function FilterPanel({ filters, onChange }) {
+export default function FilterPanel({ filters, onChange, chaseRouteCount }) {
   function update(patch) {
     onChange({ ...filters, ...patch });
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <section>
+        <h3 style={styles.sectionTitle}>NWS damage points</h3>
+        <label style={styles.checkboxLabel}>
+          <input
+            type="checkbox"
+            checked={filters.showDamagePoints}
+            onChange={(e) => update({ showDamagePoints: e.target.checked })}
+          />
+          Show live damage survey points
+        </label>
+        <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
+          Live from NOAA's Damage Assessment Toolkit - recent/operational data, not a full
+          historical archive.
+        </p>
+      </section>
+
       <section>
         <h3 style={styles.sectionTitle}>Event types</h3>
         <div style={styles.chipRow}>
@@ -107,7 +123,9 @@ export default function FilterPanel({ filters, onChange }) {
       </section>
 
       <section>
-        <h3 style={styles.sectionTitle}>Chaser routes</h3>
+        <h3 style={styles.sectionTitle}>
+          Chaser routes {chaseRouteCount !== null && chaseRouteCount !== undefined ? `(${chaseRouteCount} approved)` : ""}
+        </h3>
         <label style={{ ...styles.checkboxLabel, marginBottom: 8 }}>
           <input
             type="checkbox"

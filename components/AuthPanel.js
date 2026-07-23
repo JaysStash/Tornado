@@ -46,7 +46,10 @@ export default function AuthPanel({ onSessionChange }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setStatus("sending");
-    const { error } = await supabase.auth.signInWithOtp({ email });
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    });
     setStatus(error ? "error" : "sent");
   }
 

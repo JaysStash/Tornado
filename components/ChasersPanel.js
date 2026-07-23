@@ -1,14 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { supabaseConfigured } from "../lib/supabaseClient";
+import { useEffect, useState } from "react";
+import { supabase, supabaseConfigured } from "../lib/supabaseClient";
 import AuthPanel from "./AuthPanel";
 import SubmissionForm from "./SubmissionForm";
 import ModerationQueue from "./ModerationQueue";
+import ChaserManagement from "./ChaserManagement";
 
 export default function ChasersPanel() {
   const [session, setSession] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState("submit");
+  const [adminSection, setAdminSection] = useState("moderate");
+
+  useEffect(() => {
+    if (!session) {
+      setIsAdmin(false);
+      return;
+    }
+    supabase
+      .from("admins")
+      .select("user_id")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+      .then(({ data }) => setIsAdmin(Boolean(data)));
+  }, [session]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -22,17 +38,45 @@ export default function ChasersPanel() {
           >
             Submit a route
           </button>
-          <button
-            style={{ ...styles.subTab, ...(tab === "moderate" ? styles.subTabActive : {}) }}
-            onClick={() => setTab("moderate")}
-          >
-            Moderation queue
-          </button>
+          {isAdmin && (
+            <button
+              style={{ ...styles.subTab, ...(tab === "admin" ? styles.subTabActive : {}) }}
+              onClick={() => setTab("admin")}
+            >
+              Admin
+            </button>
+          )}
         </div>
       )}
 
       {supabaseConfigured && session && tab === "submit" && <SubmissionForm session={session} />}
-      {supabaseConfigured && session && tab === "moderate" && <ModerationQueue session={session} />}
+
+      {supabaseConfigured && session && isAdmin && tab === "admin" && (
+        <div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+            <button
+              style={{
+                ...styles.subTab,
+                ...(adminSection === "moderate" ? styles.subTabActive : {}),
+              }}
+              onClick={() => setAdminSection("moderate")}
+            >
+              Moderation queue
+            </button>
+            <button
+              style={{
+                ...styles.subTab,
+                ...(adminSection === "manage" ? styles.subTabActive : {}),
+              }}
+              onClick={() => setAdminSection("manage")}
+            >
+              Manage chasers
+            </button>
+          </div>
+          {adminSection === "moderate" && <ModerationQueue session={session} />}
+          {adminSection === "manage" && <ChaserManagement />}
+        </div>
+      )}
     </div>
   );
 }
