@@ -672,3 +672,38 @@ that the way I did for damage points, and didn't want to ship a guess
 for something that renders as an actual image. Worth a dedicated look
 if you want it - flag it and we'll research it properly rather than
 rushing it.
+
+---
+
+# Warning polygons (the deferred item from last round)
+
+Researched this properly instead of guessing. Found real, documented
+IEM infrastructure - https://mesonet.agron.iastate.edu/ogc/ lists both
+a live WMS layer and, more usefully, a WFS archive endpoint that
+serves warning polygon data **for a specific historical date**
+(coverage starts July 2002).
+
+**Built as an interactive map layer, not a static image** - click any
+tornado's popup, tap "Show warning polygons," and the actual warning
+polygons for that day render on the map itself (red = tornado
+warning, yellow = severe thunderstorm warning, matching IEM's own
+convention). This reuses the existing map instead of adding a
+separate image-gallery section, and it's genuinely more useful than a
+static image - it's a real layer on the same map, at the same scale,
+alongside everything else.
+
+**Honesty check, same as the current-year tornado fix:** I found the
+real endpoint and its documented URL pattern, but couldn't empirically
+verify the exact response format before shipping (no direct fetch
+access to test against from where this was built). The code handles
+that defensively - a format mismatch or empty result shows a small
+"no data for that date" message on the map rather than breaking
+anything, so worst case is it under-delivers quietly, not that it
+crashes. Try it on a well-known recent tornado (something from the
+last few years) first - if it comes back consistently empty even for
+those, the query format likely needs a look.
+
+**Scoped to tornadoes only for now** - they have one clean date field.
+Hurricanes span many days, so "warning polygons for this event" would
+need picking a specific day within the storm, which felt like a
+separate small feature rather than an assumption to bake in silently.

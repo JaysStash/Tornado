@@ -32,6 +32,9 @@ function eventPopupHTML(feature) {
     ? `<button class="event-popup-stats-btn" data-animate="1">▶ Animate track</button>`
     : "";
   if (p.event_type === "tornado") {
+    const warningsBtn = p.date
+      ? `<button class="event-popup-stats-btn" data-warnings="${p.date}">Show warning polygons</button>`
+      : "";
     return `
       <div class="event-popup">
         <strong>${efLabel(p.ef_rating)} tornado</strong>
@@ -39,6 +42,7 @@ function eventPopupHTML(feature) {
         ${p.fatalities ? `<div class="event-popup-row">${p.fatalities} fatalities</div>` : ""}
         ${p.preliminary ? `<div class="event-popup-badge">Preliminary</div>` : ""}
         ${animateBtn}
+        ${warningsBtn}
         <button class="event-popup-stats-btn" data-open-stats="1">Full stats →</button>
       </div>`;
   }
@@ -245,6 +249,43 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           },
         });
 
+        // Historical NWS warning polygons for a specific event's date,
+        // shown on demand from a popup rather than a standing toggle -
+        // these are inherently tied to one specific day, not a year
+        // range. Styled red/yellow matching IEM's own convention for
+        // tornado vs severe thunderstorm warnings.
+        map.addSource("warning-polygons", { type: "geojson", data: emptyFC() });
+        map.addLayer({
+          id: "warning-polygons-fill",
+          type: "fill",
+          source: "warning-polygons",
+          paint: {
+            "fill-color": [
+              "match",
+              ["coalesce", ["get", "phenomena"], ""],
+              "TO", "#DC2626",
+              "SV", "#EAB308",
+              "#8B93E8",
+            ],
+            "fill-opacity": 0.18,
+          },
+        });
+        map.addLayer({
+          id: "warning-polygons-line",
+          type: "line",
+          source: "warning-polygons",
+          paint: {
+            "line-color": [
+              "match",
+              ["coalesce", ["get", "phenomena"], ""],
+              "TO", "#DC2626",
+              "SV", "#EAB308",
+              "#8B93E8",
+            ],
+            "line-width": 1.5,
+          },
+        });
+
         // Live NWS damage points (NOAA DAT), fetched on demand for the
         // current viewport rather than baked into the static pipeline -
         // this is operational/recent survey data, not a full historical
@@ -306,6 +347,11 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
             });
             popup.getElement()?.querySelector("[data-animate]")?.addEventListener("click", () => {
               animatePlayback(feature);
+              popup.remove();
+            });
+            const warningsBtn = popup.getElement()?.querySelector("[data-warnings]");
+            warningsBtn?.addEventListener("click", () => {
+              loadWarningPolygons(warningsBtn.getAttribute("data-warnings"));
               popup.remove();
             });
           });
@@ -569,6 +615,56 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
     if (!ready || !flyToLocation) return;
     mapRef.current?.flyTo({ center: flyToLocation, zoom: 8, duration: 1500 });
   }, [ready, flyToLocation]);
+
+  // Historical NWS warning polygons for one specific date, from IEM's
+  // documented WFS archive (mesonet.agron.iastate.edu/ogc/). Archive
+  // coverage starts July 2002, so most of this site's 1950+ tornado
+  // archive predates it - an empty/no-data result for older events is
+  // expected, not a failure.
+  //
+  // CAVEAT: this endpoint's exact response format wasn't empirically
+  // verified before shipping (same situation as the current-year
+  // tornado fetch) - defensive parsing below means a format mismatch
+  // shows a message rather than breaking anything, but if this keeps
+  // coming back empty even for recent, well-documented events, the
+  // query format below may need adjusting.
+  async function loadWarningPolygons(dateStr) {
+    const map = mapRef.current;
+    if (!map) return;
+    onLoadingChange?.(true);
+    try {
+      const url = `https://mesonet.agron.iastate.edu/wfs/ww.php?date=${dateStr}&format=geojson`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("request failed");
+      const data = await res.json();
+      if (data?.type !== "FeatureCollection") throw new Error("unexpected format");
+
+      map.getSource("warning-polygons")?.setData(data);
+
+      if (data.features.length === 0) {
+        showInfoPopup(
+          map.getCenter(),
+          "No warning polygon data found for that date - either none were issued, or it predates IEM's archive (coverage starts July 2002)."
+        );
+      }
+    } catch {
+      showInfoPopup(
+        map.getCenter(),
+        "Couldn't load warning polygons for that date - the source may be temporarily unavailable, or its format changed since this was built."
+      );
+    } finally {
+      onLoadingChange?.(false);
+    }
+  }
+
+  function showInfoPopup(lngLat, message) {
+    const map = mapRef.current;
+    if (!map) return;
+    new maplibregl.Popup({ closeButton: true, maxWidth: "240px" })
+      .setLngLat(lngLat)
+      .setHTML(`<div class="event-popup"><div class="event-popup-row">${message}</div></div>`)
+      .addTo(map);
+  }
 
   function reportSummaryStats() {
     const tornadoRatings = filters.efRatings;
