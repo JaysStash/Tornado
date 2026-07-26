@@ -49,16 +49,15 @@ export default function TopBar({ onMenuClick, onProfileClick, loading }) {
 
 const styles = {
   wrap: {
-    position: "absolute",
+    position: "sticky",
     top: 0,
-    left: 0,
-    right: 0,
     zIndex: 10,
     display: "flex",
     alignItems: "center",
     gap: 10,
     padding: "12px 14px",
-    background: "linear-gradient(to bottom, var(--bg-deep) 40%, transparent)",
+    background: "var(--bg-deep)",
+    borderBottom: "1px solid var(--border-subtle)",
   },
   title: {
     fontSize: 18,

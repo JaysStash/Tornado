@@ -7,12 +7,16 @@ import { BASE_STYLE_URL, tuneStyle } from "../lib/mapStyle";
 import {
   loadTornadoesInRange,
   loadHurricanesInRange,
+  loadDamagePoints,
+  loadDamageLines,
+  loadDamagePolygons,
 } from "../lib/dataLoader";
 import {
   EF_MATCH_EXPRESSION,
   CATEGORY_MATCH_EXPRESSION,
   TORNADO_TRUE_WIDTH_EXPRESSION,
   HURRICANE_TRUE_WIDTH_EXPRESSION,
+  DAT_EFSCALE_MATCH_EXPRESSION,
   efLabel,
   categoryLabel,
   badgeColor,
@@ -139,10 +143,11 @@ function interpolateAlongLine(coordinates, t) {
 }
 
 // Builds a MapLibre filter expression combining: geometry type, active
-// EF/category selections, active state selection, the timeline scrub
-// position, and (for the split solid/dashed layer pairs) which side of
-// the preliminary flag this particular layer renders.
-function buildFilter({ geomType, ratingProp, allowedRatings, allowedStates, scrubYear, yearProp, preliminary }) {
+// EF/category selections (either a specific allowed set, or a minimum
+// threshold - "EF3+" style), active state selection, the timeline
+// scrub position, and (for the split solid/dashed layer pairs) which
+// side of the preliminary flag this particular layer renders.
+function buildFilter({ geomType, ratingProp, allowedRatings, minRating, allowedStates, scrubYear, yearProp, preliminary, dateFrom, dateProp }) {
   const clauses = ["all", ["==", ["geometry-type"], geomType]];
 
   if (preliminary === true) {
@@ -157,11 +162,20 @@ function buildFilter({ geomType, ratingProp, allowedRatings, allowedStates, scru
       ["literal", [...allowedRatings]],
     ]);
   }
+  if (minRating !== null && minRating !== undefined && minRating > -1) {
+    clauses.push([">=", ["coalesce", ["get", ratingProp], -1], minRating]);
+  }
   if (allowedStates && allowedStates.size > 0) {
     clauses.push(["in", ["get", "state"], ["literal", [...allowedStates]]]);
   }
   if (scrubYear !== null && scrubYear !== undefined) {
     clauses.push(["<=", ["get", yearProp], scrubYear]);
+  }
+  // ISO date strings ("YYYY-MM-DD") compare correctly lexicographically,
+  // so a plain ">=" string comparison works fine here without needing
+  // to parse into actual date values.
+  if (dateFrom && dateProp) {
+    clauses.push([">=", ["coalesce", ["get", dateProp], ""], dateFrom]);
   }
   return clauses;
 }
@@ -173,7 +187,6 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
   const lastTornadoesRef = useRef([]);
   const lastHurricanesRef = useRef([]);
   const hurricaneByIdRef = useRef(new Map());
-  const damagePointsEnabledRef = useRef(false);
   const [ready, setReady] = useState(false);
 
   // --- Map init (once) ---
@@ -354,21 +367,49 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
           },
         });
 
-        // Live NWS damage points (NOAA DAT), fetched on demand for the
-        // current viewport rather than baked into the static pipeline -
-        // this is operational/recent survey data, not a full historical
-        // archive back to 1950, so it's fetched fresh, not pre-processed.
+        // NWS DAT damage assessment data - auto-updated daily via the
+        // pipeline (scripts/fetch-damage-assessment.js), not fetched
+        // live per-viewport. Polygons are the actual damage swath shape
+        // (varying width along the path, unlike the tornado tracks
+        // layer's width which is a modeled estimate) - this is real
+        // surveyed damage-extent data where it exists.
+        map.addSource("damage-polygons", { type: "geojson", data: emptyFC() });
+        map.addLayer({
+          id: "damage-polygons",
+          type: "fill",
+          source: "damage-polygons",
+          layout: { visibility: "none" },
+          paint: { "fill-color": DAT_EFSCALE_MATCH_EXPRESSION, "fill-opacity": 0.45 },
+        });
+        map.addLayer({
+          id: "damage-polygons-outline",
+          type: "line",
+          source: "damage-polygons",
+          layout: { visibility: "none" },
+          paint: { "line-color": DAT_EFSCALE_MATCH_EXPRESSION, "line-width": 1 },
+        });
+
+        map.addSource("damage-lines", { type: "geojson", data: emptyFC() });
+        map.addLayer({
+          id: "damage-lines",
+          type: "line",
+          source: "damage-lines",
+          layout: { visibility: "none" },
+          paint: { "line-color": DAT_EFSCALE_MATCH_EXPRESSION, "line-width": 2.5 },
+        });
+
         map.addSource("damage-points", { type: "geojson", data: emptyFC() });
         map.addLayer({
           id: "damage-points",
           type: "circle",
           source: "damage-points",
+          layout: { visibility: "none" },
           paint: {
-            "circle-color": "#F5A623",
+            "circle-color": DAT_EFSCALE_MATCH_EXPRESSION,
             "circle-radius": 4,
             "circle-stroke-color": "#0A0B0F",
             "circle-stroke-width": 1,
-            "circle-opacity": 0.85,
+            "circle-opacity": 0.9,
           },
         });
         map.on("click", "damage-points", (e) => {
@@ -386,8 +427,20 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
             )
             .addTo(map);
         });
-        map.on("moveend", () => {
-          if (damagePointsEnabledRef.current) loadDamagePoints();
+        map.on("click", "damage-polygons", (e) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          const p = f.properties;
+          new maplibregl.Popup({ closeButton: true, maxWidth: "240px" })
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `<div class="event-popup">
+                 <strong>Damage area</strong>
+                 <div class="event-popup-row">${p.efscale || "Rating not yet assigned"}</div>
+                 ${p.stormdate ? `<div class="event-popup-row">${p.stormdate}</div>` : ""}
+               </div>`
+            )
+            .addTo(map);
         });
 
         for (const layerId of [
@@ -532,6 +585,9 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
     const tornadoRatings = filters.efRatings; // Set or null (null = all)
     const categoryRatings = filters.categories;
     const states = filters.states;
+    const minRating = filters.minRating ?? -1;
+    const minCategory = filters.minCategory ?? -1;
+    const dateFrom = filters.dateFrom ?? null;
 
     map.setFilter(
       "tornado-tracks",
@@ -539,10 +595,13 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         geomType: "LineString",
         ratingProp: "ef_rating",
         allowedRatings: tornadoRatings,
+        minRating,
         allowedStates: states,
         scrubYear,
         yearProp: "year",
         preliminary: false,
+        dateFrom,
+        dateProp: "date",
       })
     );
     map.setFilter(
@@ -551,10 +610,13 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         geomType: "LineString",
         ratingProp: "ef_rating",
         allowedRatings: tornadoRatings,
+        minRating,
         allowedStates: states,
         scrubYear,
         yearProp: "year",
         preliminary: true,
+        dateFrom,
+        dateProp: "date",
       })
     );
     map.setFilter(
@@ -563,9 +625,12 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         geomType: "Point",
         ratingProp: "ef_rating",
         allowedRatings: tornadoRatings,
+        minRating,
         allowedStates: states,
         scrubYear,
         yearProp: "year",
+        dateFrom,
+        dateProp: "date",
       })
     );
     map.setFilter(
@@ -574,10 +639,13 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         geomType: "LineString",
         ratingProp: "category",
         allowedRatings: categoryRatings,
+        minRating: minCategory,
         allowedStates: null,
         scrubYear,
         yearProp: "year",
         preliminary: false,
+        dateFrom,
+        dateProp: "segment_date",
       })
     );
     map.setFilter(
@@ -586,14 +654,17 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
         geomType: "LineString",
         ratingProp: "category",
         allowedRatings: categoryRatings,
+        minRating: minCategory,
         allowedStates: null,
         scrubYear,
         yearProp: "year",
         preliminary: true,
+        dateFrom,
+        dateProp: "segment_date",
       })
     );
     reportSummaryStats();
-  }, [ready, filters.efRatings, filters.categories, filters.states, scrubYear]);
+  }, [ready, filters.efRatings, filters.categories, filters.states, filters.minRating, filters.minCategory, filters.dateFrom, scrubYear]);
 
   // --- Chase routes: fetch once Supabase is configured, re-filter
   // client-side (no MapLibre expression does case-insensitive substring
@@ -749,17 +820,23 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
   function reportSummaryStats() {
     const tornadoRatings = filters.efRatings;
     const states = filters.states;
+    const minRating = filters.minRating ?? -1;
+    const dateFrom = filters.dateFrom ?? null;
     const visibleTornadoes = lastTornadoesRef.current.filter((f) => {
       const p = f.properties;
       if (tornadoRatings && !tornadoRatings.has(p.ef_rating ?? -1)) return false;
+      if (minRating > -1 && (p.ef_rating ?? -1) < minRating) return false;
       if (states && states.size > 0 && !states.has(p.state)) return false;
       if (scrubYear !== null && p.year > scrubYear) return false;
+      if (dateFrom && (p.date ?? "") < dateFrom) return false;
       return true;
     });
     const categoryRatings = filters.categories;
+    const minCategory = filters.minCategory ?? -1;
     const visibleHurricanes = lastHurricanesRef.current.filter((f) => {
       const p = f.properties;
       if (categoryRatings && !categoryRatings.has(p.category ?? -1)) return false;
+      if (minCategory > -1 && (p.category ?? -1) < minCategory) return false;
       if (scrubYear !== null && p.year > scrubYear) return false;
       return true;
     });
@@ -777,49 +854,44 @@ export default function MapView({ filters, scrubYear, onFeatureClick, onLoadingC
     });
   }
 
-  // Live NWS damage points from NOAA's Damage Assessment Toolkit -
-  // fetched fresh for whatever's currently in view, not baked into the
-  // static pipeline. This is operational/recent survey data (not a full
-  // historical archive), so results will skew toward recent events -
-  // that's the nature of the source, not a bug here.
-  async function loadDamagePoints() {
+  // NWS DAT damage points/lines/polygons - loaded once from the
+  // auto-updated static files (refreshed daily by the pipeline, see
+  // scripts/fetch-damage-assessment.js), not fetched live per-viewport.
+  // This is operational/recent data only (~400 day rolling window),
+  // not part of the deep historical archive.
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+
+    async function load() {
+      const [points, lines, polygons] = await Promise.allSettled([
+        loadDamagePoints(),
+        loadDamageLines(),
+        loadDamagePolygons(),
+      ]);
+      if (cancelled) return;
+      const map = mapRef.current;
+      if (points.status === "fulfilled") map.getSource("damage-points")?.setData(points.value);
+      if (lines.status === "fulfilled") map.getSource("damage-lines")?.setData(lines.value);
+      if (polygons.status === "fulfilled") map.getSource("damage-polygons")?.setData(polygons.value);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
+
+  // Toggling "Damage Points" shows/hides all three layers together
+  // (matching the single toggle in the UI) - a visibility flip, not a
+  // refetch, since the data's already loaded above.
+  useEffect(() => {
+    if (!ready) return;
     const map = mapRef.current;
     if (!map) return;
-    const bounds = map.getBounds();
-    const bbox = [
-      bounds.getWest(),
-      bounds.getSouth(),
-      bounds.getEast(),
-      bounds.getNorth(),
-    ].join(",");
-    const url =
-      "https://services.dat.noaa.gov/arcgis/rest/services/nws_damageassessmenttoolkit/DamageViewer/FeatureServer/0/query" +
-      `?where=1=1&outFields=efscale,stormdate,event_id&geometry=${bbox}` +
-      "&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects" +
-      "&outSR=4326&resultRecordCount=500&f=geojson";
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const geojson = await res.json();
-      map.getSource("damage-points")?.setData(geojson);
-    } catch {
-      // Live external service outside our control - fail quietly rather
-      // than breaking the rest of the map over it.
+    const visibility = filters.showDamagePoints ? "visible" : "none";
+    for (const id of ["damage-points", "damage-lines", "damage-polygons", "damage-polygons-outline"]) {
+      map.setLayoutProperty(id, "visibility", visibility);
     }
-  }
-
-  // Keeps the moveend listener (registered once at map init) in sync
-  // with the current toggle state, and loads/clears immediately when
-  // the toggle itself changes.
-  useEffect(() => {
-    damagePointsEnabledRef.current = filters.showDamagePoints;
-    if (!ready) return;
-    if (filters.showDamagePoints) {
-      loadDamagePoints();
-    } else {
-      mapRef.current?.getSource("damage-points")?.setData(emptyFC());
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, filters.showDamagePoints]);
 
   return <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />;

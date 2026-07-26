@@ -711,6 +711,136 @@ separate small feature rather than an assumption to bake in silently.
 
 ---
 
+# Major redesign: matching maxvelocitywx.com/history
+
+This round rebuilds the Tracks experience and adds a genuine
+auto-updating pipeline, following the reference site's feature set
+closely while keeping this site's own visual theme, adding hurricanes
+(the one deliberate addition beyond their scope), and restructuring
+into separate Tracks/Warnings subtabs per explicit instruction (their
+own site has it as one continuous scrolling page - subtabs was a
+direct ask, not a guess).
+
+## Required: run the pipeline before this does anything useful
+
+Three genuinely new data sources feed this round. Nothing renders
+until you do:
+
+```bash
+npm install
+npm run update:all
+git add data/processed/
+git commit -m "Add DAT damage + IEM warnings auto-updated data"
+git push
+```
+
+This now also runs automatically every day via the existing GitHub
+Actions workflow - no changes needed there, it already commits
+everything under `data/processed/`, which now includes the new
+`damage/` and `warnings/` folders too.
+
+## What's genuinely auto-updating now
+
+Two new pipeline scripts, both refreshed daily by the same cron as
+everything else:
+
+- **`scripts/fetch-damage-assessment.js`** - pulls NOAA's DAT
+  (Damage Assessment Toolkit) points, lines, *and* polygons for a
+  rolling ~400-day window. Verified all three layer indices directly
+  against the service's own REST metadata before building against
+  them (0=points, 1=lines, 2=polygons) - this wasn't a guess.
+- **`scripts/fetch-warnings.js`** - pulls IEM's warning archive for a
+  rolling 100-day window, one day-request at a time (this endpoint is
+  date-keyed, not range-queryable).
+
+Both replace what used to be live-fetched-on-viewport-move data with
+genuinely scheduled, pre-baked static files - closer to what "Data:
+NOAA/NWS DAT · Warning archive: IEM" on the reference site actually
+implies (a real pipeline, not a live API call per page view).
+
+## Damage polygons - the "width expands as it did in real time" feature
+
+This is what DAT's damage **polygon** layer actually is - the real
+surveyed damage-swath shape, not a modeled estimate like the tornado
+track width. Rendered as a filled area on the map, colored by
+`efscale`, with damage points layered on top as individual dots -
+matching the visual you pointed to. Damage lines (a third DAT layer,
+narrower swaths) are included too, styled the same way.
+
+## New Tracks page layout
+
+- **Stat cards** (Tornadoes / Injuries / Fatalities / Highest EF) -
+  prominent 2x2 cards in normal page flow, not a floating strip
+- **Quick date-range buttons** (30 days / 90 days / 6 months / 1 year
+  / Custom) - the recent-focused view you said you're fine leaning
+  into. "Custom" hands off to the existing year-range timeline for
+  anyone who wants deep history
+- **Minimum rating buttons** (All / EF0+ through EF5) replacing the
+  old checkbox multi-select - simpler, matches the reference exactly.
+  Added an equivalent "Minimum hurricane category" row for our own
+  addition, since they don't have hurricanes to reference
+- **Layer toggles**: Tracks, Hurricanes (ours), Damage Points (covers
+  points+lines+polygons together under one toggle, matching their
+  single "Damage Points" toggle rather than three separate ones)
+- **Always-visible EF legend** (was collapsed by default before, now
+  matches the reference)
+- **Track + damage point count** overlay, bottom-left on the map
+- **Full Screen** toggle
+
+The old checkbox-based EF/category filters and event-type checkboxes
+moved out of the menu entirely, replaced by the always-visible quick
+filter bar above. State selection and chaser-route filtering (not
+part of the reference site) stay in the menu as power-user options.
+
+## New Warnings subtab
+
+Separate page, own map instance: time-range buttons (Yesterday/Last
+3/7/30/90 Days), a Tornado/Severe Warning legend and count, and a
+**Download Image** button.
+
+**One real substitution here, explained honestly:** the reference
+site generates actual pre-rendered PNG images server-side, with stats
+and a legend baked directly into the image, refreshed on a schedule.
+Replicating that would mean standing up headless map-rendering
+infrastructure (a real, separate technical project, not something to
+guess at alongside everything else this round). Instead, Download
+Image uses the browser's own canvas export - it captures the live map
+exactly as shown, which gets you the same practical outcome (a
+downloadable warning map) through a much simpler, more reliable
+mechanism. Not pixel-identical to theirs, but functionally the same
+thing for less infrastructure risk.
+
+**Also simplified:** their "Regional"/"Local" scope buttons aren't
+included yet (Full US only) - those need a real design decision about
+how "regional" gets defined (by state? by chase-relevant area?) rather
+than a guess. And their granular warning-type legend (Tornado
+Emergency / PDS Tornado / Confirmed Tornado / Destructive vs.
+Considerable Severe) isn't matched - this build uses the simpler
+Tornado Warning / Severe Thunderstorm Warning split (IEM's core
+`phenomena` field, confirmed), since the more granular tiers would
+need verifying additional IEM fields I didn't have confirmed access
+to check. Worth a dedicated look if the granularity matters to you.
+
+## Two real bugs I found and fixed while restructuring
+
+Both were genuine layout bugs from converting the app from "one
+fixed-height full-screen map" to "a scrollable page with a map
+section," not follow-up requests - worth knowing about since they'd
+have been confusing to hit blind:
+
+- The top bar was `position: absolute`, meant to float over a
+  full-viewport map. On a scrollable page, that meant it would
+  visually overlap the content below it instead of pushing it down.
+  Switched to `position: sticky`.
+- The slide-out menu was also `position: absolute` inside the main
+  container - fine when that container was exactly one viewport tall,
+  but now that the page can scroll well past 100vh, an absolute
+  "bottom sheet" would anchor to the bottom of the *entire scrollable
+  page*, not the visible screen. Switched to `position: fixed`.
+(Extended to hurricanes in the next round below.)
+
+---
+
 # Hurricane rendering overhaul: segmented color, true-to-scale width, warnings
 
 ## Important: re-run the data pipeline after pulling this update

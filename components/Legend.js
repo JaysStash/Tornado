@@ -4,7 +4,7 @@ import { useState } from "react";
 import { EF_COLORS, CATEGORY_COLORS, efLabel, categoryLabel } from "../lib/colors";
 
 export default function Legend() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
 
   if (!open) {
     return (
@@ -45,8 +45,8 @@ export default function Legend() {
 const styles = {
   chip: {
     position: "absolute",
-    bottom: 190,
-    left: 14,
+    top: 12,
+    left: 12,
     zIndex: 6,
     background: "var(--bg-panel-raised)",
     border: "1px solid var(--border-subtle)",
@@ -58,8 +58,8 @@ const styles = {
   },
   panel: {
     position: "absolute",
-    bottom: 190,
-    left: 14,
+    top: 12,
+    left: 12,
     zIndex: 6,
     background: "var(--bg-panel-raised)",
     border: "1px solid var(--border-subtle)",

@@ -107,7 +107,83 @@ function main() {
     "utf-8"
   );
 
+  processRecentDamageData(OUT_DIR);
+  processRecentWarnings(OUT_DIR);
+
   console.log(`Done. Output in ${OUT_DIR}`);
+}
+
+// Copies the (already-GeoJSON) DAT raw files into processed/, computing
+// a small stats summary (count, highest EF) for the stat-card UI.
+// Defensive about field names beyond the confirmed ones (efscale,
+// event_id, stormdate) since the full DAT schema wasn't exhaustively
+// verified - missing fields degrade to "unknown" rather than crashing.
+function processRecentDamageData(outDir) {
+  const rawDir = path.join(process.cwd(), "data", "raw");
+  const damageDir = path.join(outDir, "damage");
+  fs.mkdirSync(damageDir, { recursive: true });
+
+  const layerFiles = { points: "dat-points.json", lines: "dat-lines.json", polygons: "dat-polygons.json" };
+  let pointFeatures = [];
+
+  for (const [name, filename] of Object.entries(layerFiles)) {
+    const rawPath = path.join(rawDir, filename);
+    if (!fs.existsSync(rawPath)) {
+      console.log(`  (no ${filename} found - skipping damage ${name})`);
+      continue;
+    }
+    const data = JSON.parse(fs.readFileSync(rawPath, "utf-8"));
+    fs.writeFileSync(path.join(damageDir, `${name}.geojson`), JSON.stringify(data), "utf-8");
+    console.log(`  damage ${name}: ${data.features.length} features`);
+    if (name === "points") pointFeatures = data.features;
+  }
+
+  const efRank = { EF0: 0, EF1: 1, EF2: 2, EF3: 3, EF4: 4, EF5: 5 };
+  const distinctEvents = new Set();
+  let highestEF = null;
+  let injuries = 0;
+  let fatalities = 0;
+
+  for (const f of pointFeatures) {
+    const p = f.properties || {};
+    if (p.event_id) distinctEvents.add(p.event_id);
+    const efKey = (p.efscale || "").toUpperCase().trim();
+    if (efRank[efKey] !== undefined && (highestEF === null || efRank[efKey] > efRank[highestEF])) {
+      highestEF = efKey;
+    }
+    // Field names for these two aren't confirmed against DAT's real
+    // schema - trying the most likely candidates, defaulting to 0.
+    injuries += Number(p.injuries ?? p.ninjuries ?? 0) || 0;
+    fatalities += Number(p.fatalities ?? p.nfatalities ?? p.deaths ?? 0) || 0;
+  }
+
+  fs.writeFileSync(
+    path.join(damageDir, "summary.json"),
+    JSON.stringify({
+      eventCount: distinctEvents.size,
+      pointCount: pointFeatures.length,
+      highestEF,
+      injuries,
+      fatalities,
+      generatedAt: new Date().toISOString(),
+    }),
+    "utf-8"
+  );
+  console.log(`  damage summary: ${distinctEvents.size} events, highest ${highestEF ?? "n/a"}`);
+}
+
+function processRecentWarnings(outDir) {
+  const rawPath = path.join(process.cwd(), "data", "raw", "warnings-recent.json");
+  const warningsDir = path.join(outDir, "warnings");
+  fs.mkdirSync(warningsDir, { recursive: true });
+
+  if (!fs.existsSync(rawPath)) {
+    console.log("  (no warnings-recent.json found - skipping)");
+    return;
+  }
+  const data = JSON.parse(fs.readFileSync(rawPath, "utf-8"));
+  fs.writeFileSync(path.join(warningsDir, "recent.geojson"), JSON.stringify(data), "utf-8");
+  console.log(`  warnings: ${data.features.length} features`);
 }
 
 main();

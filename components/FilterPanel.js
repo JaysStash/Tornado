@@ -1,16 +1,11 @@
 "use client";
 
-import { EF_COLORS, CATEGORY_COLORS, efLabel, categoryLabel } from "../lib/colors";
-
 const STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
   "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
   "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
   "VA","WA","WV","WI","WY","DC",
 ];
-
-const EF_RATINGS = [0, 1, 2, 3, 4, 5];
-const CATEGORIES = [0, 1, 2, 3, 4, 5];
 
 function toggleInSet(set, value) {
   const next = new Set(set);
@@ -19,6 +14,10 @@ function toggleInSet(set, value) {
   return next;
 }
 
+// Event type, minimum rating/category, and damage-point toggles now
+// live in QuickFilterBar (always visible above the map, matching the
+// reference site) instead of here. This panel holds the less-common
+// power-user filters: state selection and chaser-route filtering.
 export default function FilterPanel({ filters, onChange, chaseRouteCount }) {
   function update(patch) {
     onChange({ ...filters, ...patch });
@@ -26,102 +25,6 @@ export default function FilterPanel({ filters, onChange, chaseRouteCount }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <section>
-        <h3 style={styles.sectionTitle}>NWS damage points</h3>
-        <label style={styles.checkboxLabel}>
-          <input
-            type="checkbox"
-            checked={filters.showDamagePoints}
-            onChange={(e) => update({ showDamagePoints: e.target.checked })}
-          />
-          Show live damage survey points
-        </label>
-        <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
-          Live from NOAA's Damage Assessment Toolkit - recent/operational data, not a full
-          historical archive.
-        </p>
-      </section>
-
-      <section>
-        <h3 style={styles.sectionTitle}>Event types</h3>
-        <div style={styles.chipRow}>
-          <label style={styles.checkboxLabel}>
-            <input
-              type="checkbox"
-              checked={filters.showTornadoes}
-              onChange={(e) => update({ showTornadoes: e.target.checked })}
-            />
-            Tornadoes
-          </label>
-          <label style={styles.checkboxLabel}>
-            <input
-              type="checkbox"
-              checked={filters.showHurricanes}
-              onChange={(e) => update({ showHurricanes: e.target.checked })}
-            />
-            Hurricanes
-          </label>
-        </div>
-      </section>
-
-      <section>
-        <h3 style={styles.sectionTitle}>EF rating</h3>
-        <div style={styles.chipRow}>
-          {EF_RATINGS.map((r) => {
-            const active = filters.efRatings === null || filters.efRatings.has(r);
-            return (
-              <button
-                key={r}
-                onClick={() =>
-                  update({
-                    efRatings: toggleInSet(
-                      filters.efRatings ?? new Set(EF_RATINGS),
-                      r
-                    ),
-                  })
-                }
-                style={{
-                  ...styles.chip,
-                  borderColor: EF_COLORS[r],
-                  opacity: active ? 1 : 0.35,
-                }}
-              >
-                {efLabel(r)}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <h3 style={styles.sectionTitle}>Hurricane category</h3>
-        <div style={styles.chipRow}>
-          {CATEGORIES.map((c) => {
-            const active = filters.categories === null || filters.categories.has(c);
-            return (
-              <button
-                key={c}
-                onClick={() =>
-                  update({
-                    categories: toggleInSet(
-                      filters.categories ?? new Set(CATEGORIES),
-                      c
-                    ),
-                  })
-                }
-                style={{
-                  ...styles.chip,
-                  borderColor: CATEGORY_COLORS[c],
-                  opacity: active ? 1 : 0.35,
-                }}
-              >
-                {categoryLabel(c)}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
       <section>
         <h3 style={styles.sectionTitle}>
           Chaser routes {chaseRouteCount !== null && chaseRouteCount !== undefined ? `(${chaseRouteCount} approved)` : ""}
@@ -185,11 +88,6 @@ const styles = {
     color: "var(--text-secondary)",
     marginBottom: 10,
   },
-  chipRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-  },
   checkboxLabel: {
     display: "flex",
     alignItems: "center",
@@ -204,15 +102,6 @@ const styles = {
     padding: "6px 9px",
     fontSize: 13,
     width: "100%",
-  },
-  chip: {
-    background: "var(--bg-panel-raised)",
-    border: "1.5px solid",
-    borderRadius: "var(--radius-sm)",
-    color: "var(--text-primary)",
-    padding: "5px 10px",
-    fontSize: 13,
-    cursor: "pointer",
   },
   stateGrid: {
     display: "grid",
